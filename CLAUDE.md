@@ -4,9 +4,50 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**TeaLeaves** is a Godot 4.6 project using GDScript as the primary language with C# support (Mono). It uses Jolt Physics and Forward Plus rendering with D3D12 on Windows.
+**TeaLeaves** is a Godot 4.6 project using **C# for all gameplay logic** with GDScript reserved for editor tooling only. It uses Jolt Physics and Forward Plus rendering with D3D12 on Windows.
+
+## Core Tenets
+
+- **C# for gameplay**, GDScript only for editor tooling or tiny glue
+- **NEVER write GDScript** for gameplay unless absolutely necessary
+- **Composition over inheritance** for Nodes
+- **Typed EventBus** for cross-system communication
+- **Data-driven configs** using Godot Resource assets (`[GlobalClass]` C# classes)
+- **Fail-fast validation**: Misconfigured objects are disabled and logged via `GD.PushError()`
+- **Deterministic state machines** with explicit state transitions
+- **Test-driven debugging**: Create a failing test first, verify it fails, fix the code, verify the test passes
+
+## Language Usage
+
+- **C#** for all gameplay logic, systems, and tests
+- **GDScript** ONLY for editor tools and scene glue scripts
+- Never use GDScript for gameplay logic
+
+### Namespace Convention
+```
+TeaLeaves.*           # All gameplay code
+TeaLeaves.Systems.*   # Core systems (EventBus, state machines, etc.)
+```
+
+## C# Conventions
+
+- All physics logic in `_PhysicsProcess(double delta)`
+- Use `[Export]` with proper hints for editor properties
+- Use `[GlobalClass]` for custom Resource types
+- Validate node setup in `_Ready()` with asserts
+- Use `GD.PushError()` for runtime issues, don't create silent fallbacks
 
 ## Key Commands
+
+### Building & Testing C#
+```powershell
+# Build C# code (must pass before commits)
+dotnet restore
+dotnet build -warnaserror
+
+# Run C# tests (including engine-aware tests via GdUnit4)
+dotnet test
+```
 
 ### Running Godot
 ```bash
@@ -17,9 +58,9 @@ pwsh ./tools/godot.ps1
 pwsh ./tools/godot.ps1 --headless --script res://path/to/script.gd
 ```
 
-### Testing (GUT)
+### Testing (GUT - GDScript Editor Tools Only)
 ```bash
-# Run all tests (60s timeout)
+# Run all GDScript tests (60s timeout)
 pwsh ./tools/test.ps1
 
 # Run tests matching a pattern
@@ -30,6 +71,8 @@ pwsh ./tools/test.ps1 -Test "res://test/unit/test_inventory.gd"
 ```
 
 Test exit codes: 0=pass, 1=failures, 124=timeout.
+
+**Note:** For gameplay logic tests, use `dotnet test` (see Building & Testing C# above).
 
 ### Validation & Linting
 ```bash
@@ -81,17 +124,20 @@ var actions := {
 
 ```
 res://
-  actors/          # Player and NPCs
+  scripts/         # C# gameplay code
+  actors/          # Player and NPCs (scenes)
   levels/          # Level scenes and scripts
   ui/              # HUD and menus
   util/            # Camera rigs, markers, utilities
   game/            # AutoLoads and global state
   data/            # Resource definitions (items, verbs)
-  tools/           # Linting and setup scripts (not shipped)
-  addons/          # Third-party addons (GUT testing framework)
+  tools/           # Linting and setup scripts (GDScript, not shipped)
+  addons/          # Third-party addons (GUT, GdUnit4)
 ```
 
-## GDScript Conventions
+## GDScript Conventions (Editor Tools Only)
+
+GDScript is reserved for editor tooling and tiny glue scripts. For gameplay logic, use C#.
 
 ### Code Style
 - **Static typing everywhere**: `var player: Player`, `func get_items() -> Array[ItemData]`
@@ -124,9 +170,11 @@ res://
 ## Validation Pipeline
 
 Before committing:
-1. `gdlint path/to/file.gd` for modified GDScript files
-2. `pwsh ./tools/godot.ps1 --headless --script res://tools/lint_project.gd` (UIDs + scene warnings)
-3. Always check scenes for errors after editing
+1. `dotnet build -warnaserror` - C# must compile without warnings
+2. `dotnet test` - All C# tests must pass
+3. `pwsh ./tools/godot.ps1 --headless --script res://tools/lint_project.gd` (UIDs + scene warnings)
+4. If GDScript modified: `gdlint path/to/file.gd` for style, plus Godot's `--check-only` for semantic analysis
+5. Always check scenes for errors after editing
 
 ## Important Notes
 
@@ -150,13 +198,100 @@ AutoLoads go in `game/` and are registered in `project.godot`. To add a new Auto
 
 ## Testing Infrastructure
 
-The project uses GUT (Godot Unit Test) for GDScript testing:
+### C# Testing (Primary) - GdUnit4
+
+**Framework:** GdUnit4 (Version 6.x+)
+**Runner:** `dotnet test` or `pwsh ./tools/test.ps1`
+
+#### Core Guidelines
+1. **Framework:** STRICTLY use `GdUnit4`. Do not use `NUnit` or `MSTest` directly.
+2. **Imports:** Always include `using GdUnit4;` and `using static GdUnit4.Assertions;`.
+3. **Attributes:** Use `[TestSuite]` for classes and `[TestCase]` for methods.
+4. **Assertions:** Use GdUnit fluid assertions (e.g., `AssertBool(result).IsTrue()`, `AssertObject(node).IsNotNull()`).
+5. **Mocking:** Use GdUnit's built-in `Mock<T>()`. Do not use `Moq` as it fails with Godot objects.
+
+#### Test Categories
+* **Logic Tests (POCO):** Test pure C# classes. Fast execution. DO NOT inherit from `Node`.
+* **Scene Tests (Integration):** Test Nodes, Scenes, and Physics.
+    * **MUST** add `[RequireGodotRuntime]` attribute to the method.
+    * **MUST** use `ISceneRunner` to load/instantiate scenes.
+    * **MUST** use `await` for frame processing (e.g., `await _runner.AwaitIdleFrame()`).
+
+#### Anti-Patterns to Avoid (Cause Hangs)
+
+**NEVER do this** - causes infinite hangs:
+```csharp
+// BAD: ToSignal("ready") hangs because ready fires synchronously during AddChild
+root.AddChild(_panel);
+await _panel.ToSignal(_panel, "ready");  // HANGS FOREVER
+```
+
+**Do this instead**:
+```csharp
+// GOOD: Wait for next frame using process_frame signal
+root.AddChild(_panel);
+await GetTree().ToSignal(GetTree(), "process_frame");
+```
+
+**Other patterns to avoid:**
+- `while(true)` loops without break conditions
+- Frame loops with >200 iterations (slow tests)
+- Async tests without `[RequireGodotRuntime]` attribute
+
+#### Code Patterns
+
+**Pattern 1: Pure Logic Test (No Engine)**
+```csharp
+[TestSuite]
+public class InventoryTests
+{
+    [TestCase]
+    public void AddItem_IncreasesCount()
+    {
+        // Arrange
+        var inv = new Inventory();
+        // Act
+        inv.Add("Sword", 1);
+        // Assert
+        AssertInt(inv.Count).IsEqual(1);
+        AssertObject(inv.LastItem).IsNotNull();
+    }
+}
+```
+
+**Pattern 2: Scene/Node Test (With Engine)**
+```csharp
+[TestSuite]
+public class PlayerTests
+{
+    private ISceneRunner _runner;
+
+    [Before]
+    public void Setup() => _runner = ISceneRunner.Load("res://Scenes/Player.tscn");
+
+    [TestCase]
+    [RequireGodotRuntime] // CRITICAL: Required for Node access
+    public async Task TakeDamage_ReducesHealth()
+    {
+        var player = _runner.GetProperty<Player>("Player");
+
+        await _runner.AwaitIdleFrame(); // Wait for ready
+        player.TakeDamage(10);
+
+        AssertInt(player.Health).IsEqual(90);
+    }
+}
+```
+
+### GDScript Testing (Editor Tools Only)
+GUT (Godot Unit Test) is available for GDScript editor tooling tests:
 - Test files go in `res://test/unit/` and `res://test/integration/`
 - Test files must be named `test_*.gd` and extend `GutTest`
 - Test methods must start with `test_`
 - Configuration in `.gutconfig.json`
+- GDScript must pass both style linting (`gdlint`) and semantic analysis (`--check-only`) if modified
 
-Example test:
+Example GDScript test (for editor tools):
 ```gdscript
 extends GutTest
 
