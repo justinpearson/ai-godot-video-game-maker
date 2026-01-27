@@ -1,0 +1,16 @@
+#!/bin/bash
+# Pre-push hook: Run tests before pushing
+# Install: cp tools/hooks/pre-push .git/hooks/ && chmod +x .git/hooks/pre-push
+
+echo "Running tests before push..."
+
+# Run tests with 90 second timeout
+if ! pwsh ./tools/test.ps1 -TimeoutSeconds 90; then
+    echo ""
+    echo "ERROR: Tests failed. Push blocked."
+    echo "Fix the failing tests or use 'git push --no-verify' to bypass."
+    exit 1
+fi
+
+echo "Tests passed. Proceeding with push."
+exit 0
