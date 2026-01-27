@@ -1,11 +1,12 @@
 extends SceneTree
 
 # Headless-safe input setup. Adds actions and default key bindings, then saves to project settings.
+# To add new actions: add entries to the `actions` dictionary below and re-run this script.
+# Keys are KEY_* constants from @GlobalScope. Multiple keys = alternatives for the same action.
 
 func _initialize() -> void:
     var actions := {
         "move_forward": [KEY_W, KEY_UP],
-        "move_back": [KEY_S, KEY_DOWN],
         "move_backward": [KEY_S, KEY_DOWN],
         "move_left": [KEY_A, KEY_LEFT],
         "move_right": [KEY_D, KEY_RIGHT],

@@ -39,21 +39,23 @@ pwsh ./tools/godot.ps1 --headless --script res://tools/lint_project.gd
 # Lint specific scenes
 pwsh ./tools/godot.ps1 --headless --script res://tools/lint_project.gd -- --scene res://path/to/scene.tscn
 
-# Validate script parsing (syntax check)
-pwsh ./tools/godot.ps1 --headless --script res://tools/validate_scripts.gd
-
-# Full context test with Game AutoLoad (catches runtime errors)
-pwsh ./tools/godot.ps1 --headless res://tools/test_interaction_scene.tscn
-
 # Lint all shaders
 pwsh ./tools/godot.ps1 --headless --script res://tools/lint_all_shaders.gd
 
-# Lint single shader
-pwsh ./tools/godot.ps1 --headless --script res://tools/shader_lint.gd -- path/to/shader.gdshader
+# Lint single shader (use res:// path)
+pwsh ./tools/godot.ps1 --headless --script res://tools/shader_lint.gd -- res://path/to/shader.gdshader
 
 # GDScript linting (gdlint is on PATH)
 gdlint path/to/file.gd
 ```
+
+#### lint_project.gd Options
+- `--scene res://path.tscn` - Lint specific scene(s), can be repeated
+- `--all` - Lint all scenes (default behavior)
+- `--json` - Output results as JSON for machine parsing
+- `--fail-on-warn` - Treat warnings as failures (non-zero exit code)
+- `--uids-only` - Skip scene warnings, only validate UIDs
+- `--warnings-only` - Skip UID validation, only check scene warnings
 
 **Always lint after changes:**
 1. `gdlint` for modified GDScript files
@@ -63,8 +65,16 @@ gdlint path/to/file.gd
 
 ### Setup
 ```bash
-# Configure input actions
+# Configure default input actions
 pwsh ./tools/godot.ps1 --headless --script res://tools/setup_input_actions_cli.gd
+```
+
+To add new input actions, edit `tools/setup_input_actions_cli.gd` and add entries to the `actions` dictionary, then re-run the script. Example:
+```gdscript
+var actions := {
+    "my_action": [KEY_F],           # Single key
+    "other_action": [KEY_G, KEY_H], # Multiple keys (alternatives)
+}
 ```
 
 ## Project Structure
@@ -115,20 +125,28 @@ res://
 
 Before committing:
 1. `gdlint path/to/file.gd` for modified GDScript files
-2. `pwsh ./tools/godot.ps1 --headless --script res://tools/validate_scripts.gd` (syntax check)
-3. `pwsh ./tools/godot.ps1 --headless res://tools/test_interaction_scene.tscn` (catches runtime errors with AutoLoads)
-4. `pwsh ./tools/godot.ps1 --headless --script res://tools/lint_project.gd` (UIDs + scene warnings)
-5. Always check scenes for errors after editing
+2. `pwsh ./tools/godot.ps1 --headless --script res://tools/lint_project.gd` (UIDs + scene warnings)
+3. Always check scenes for errors after editing
 
 ## Important Notes
 
 - **Physics Layers**: Interactables use layer 2, ground/navigation uses layer 1
-- **Input Map**: Configured with `click_move`, `click_context`, `ui_cancel`
 - **Platform**: Windows (D3D12 rendering)
 - **Godot Version**: Requires Godot 4.6+ Mono (set via `GODOT_VERSION` env var)
-- **Pre-push Hook**: Runs tests (90s timeout). Bypass with `git push --no-verify`
 - **File Paths**: Use complete absolute Windows paths with drive letters and backslashes for all file operations
 - **Commit frequently** to git
+
+## AutoLoads
+
+AutoLoads go in `game/` and are registered in `project.godot`. To add a new AutoLoad:
+
+1. Create the script in `game/`, e.g., `game/game_state.gd`
+2. Add to `project.godot` under `[autoload]`:
+   ```ini
+   [autoload]
+   GameState="*res://game/game_state.gd"
+   ```
+   The `*` prefix means it's a singleton (most common).
 
 ## Testing Infrastructure
 

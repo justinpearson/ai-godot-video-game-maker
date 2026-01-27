@@ -180,15 +180,6 @@ func _extract(line: String, key: String) -> String:
     var r := m.search(line)
     return r.get_string(1) if r != null else ""
 
-# --- Scene warnings (ported from lint_scene.gd) ---
-func _collect_warnings(n: Node, out: Array) -> void:
-    n.update_configuration_warnings()
-    var w: PackedStringArray = n.get_configuration_warnings()
-    if not w.is_empty():
-        out.append({"path": str(n.get_path()), "messages": w})
-    for c in n.get_children():
-        _collect_warnings(c, out)
-
 func _find_all_scenes(root_path: String) -> PackedStringArray:
     var out: PackedStringArray = []
     var d := DirAccess.open(root_path)
