@@ -1,26 +1,26 @@
-# Run GUT (Godot Unit Test) tests with timeout protection
-# Usage: pwsh ./tools/test.ps1 [-TimeoutSeconds N] [-Select "pattern"] [-Test "res://path"]
+# Run gdUnit4 tests with timeout protection
+# Usage: pwsh ./tools/test.ps1 [-TimeoutSeconds N] [-Test "res://path"] [-Continue]
 # Default: runs all tests in res://test with 60 second timeout
 #
 # Exit codes:
 #   0   = All tests passed
-#   1   = One or more test failures
+#   1   = One or more test failures (mapped from gdUnit4's 100)
 #   124 = Timeout (process killed)
 #
 # Examples:
 #   pwsh ./tools/test.ps1                              # Run all tests
-#   pwsh ./tools/test.ps1 -Select "player"             # Run tests with "player" in filename
-#   pwsh ./tools/test.ps1 -Test "res://test/unit/test_inventory.gd"  # Run specific test file
+#   pwsh ./tools/test.ps1 -Test "res://test/unit/"     # Run tests in specific directory
+#   pwsh ./tools/test.ps1 -Continue                    # Don't stop on first failure
 
 param(
     [int]$TimeoutSeconds = 60,
-    [string]$Select = "",
-    [string]$Test = ""
+    [string]$Test = "res://test",
+    [switch]$Continue
 )
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "Running GUT tests (timeout: ${TimeoutSeconds}s)" -ForegroundColor Cyan
+Write-Host "Running gdUnit4 tests (timeout: ${TimeoutSeconds}s)" -ForegroundColor Cyan
 
 # Resolve Godot path (same logic as godot.ps1)
 $envCandidate = $env:GODOT4_MONO_EXE
@@ -31,27 +31,28 @@ if ($envCandidate -and (Test-Path -LiteralPath $envCandidate)) { $godot = $envCa
 elseif (Test-Path -LiteralPath $standardPath) { $godot = $standardPath }
 else { throw "Godot executable not found. Set GODOT4_MONO_EXE or install to '$standardPath'." }
 
-# Build argument list for GUT CLI
-$gutArgs = @("-s", "res://addons/gut/gut_cmdln.gd", "-gexit")
+# Build argument list for gdUnit4 CLI
+# gdUnit4 uses: godot -s res://addons/gdUnit4/bin/GdUnitCmdTool.gd [options]
+$gdunitArgs = @(
+    "--headless",
+    "-s", "res://addons/gdUnit4/bin/GdUnitCmdTool.gd",
+    "-a", $Test
+)
 
-# Add selection filter if provided
-if ($Select) {
-    $gutArgs += @("-gselect=$Select")
-    Write-Host "  Filtering: $Select" -ForegroundColor DarkGray
+# Add continue flag if provided (run all tests, don't stop on first failure)
+if ($Continue) {
+    $gdunitArgs += "-c"
+    Write-Host "  Mode: Continue on failure" -ForegroundColor DarkGray
 }
 
-# Add specific test file if provided
-if ($Test) {
-    $gutArgs += @("-gtest=$Test")
-    Write-Host "  Test file: $Test" -ForegroundColor DarkGray
-}
+Write-Host "  Test path: $Test" -ForegroundColor DarkGray
 
 # Use Start-Process with file redirection to capture output
 $stdoutFile = [System.IO.Path]::GetTempFileName()
 $stderrFile = [System.IO.Path]::GetTempFileName()
 
 $process = Start-Process -FilePath $godot `
-    -ArgumentList $gutArgs `
+    -ArgumentList $gdunitArgs `
     -PassThru -NoNewWindow `
     -RedirectStandardOutput $stdoutFile `
     -RedirectStandardError $stderrFile
@@ -65,8 +66,15 @@ try {
     if ($stderr) { $stderr | ForEach-Object { Write-Host $_ -ForegroundColor Yellow } }
     Remove-Item $stdoutFile, $stderrFile -ErrorAction SilentlyContinue
 
-    # GUT exit codes: 0 = pass, 1 = failures
-    exit $process.ExitCode
+    # gdUnit4 exit codes: 0=pass, 100=failure, 101=warnings
+    # Map to standard: 0=pass, 1=failure
+    $exitCode = $process.ExitCode
+    if ($exitCode -eq 100) { exit 1 }
+    if ($exitCode -eq 101) {
+        Write-Host "Tests passed with warnings" -ForegroundColor Yellow
+        exit 0
+    }
+    exit $exitCode
 } catch [System.TimeoutException] {
     Write-Host "TIMEOUT: Tests exceeded ${TimeoutSeconds}s limit, killing process..." -ForegroundColor Red
     Get-Content $stdoutFile -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }

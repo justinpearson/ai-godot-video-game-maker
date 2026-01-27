@@ -58,21 +58,19 @@ pwsh ./tools/godot.ps1
 pwsh ./tools/godot.ps1 --headless --script res://path/to/script.gd
 ```
 
-### Testing (GUT - GDScript Editor Tools Only)
+### Testing (gdUnit4)
 ```bash
-# Run all GDScript tests (60s timeout)
+# Run all tests (60s timeout)
 pwsh ./tools/test.ps1
 
-# Run tests matching a pattern
-pwsh ./tools/test.ps1 -Select "player"
+# Run tests in specific directory
+pwsh ./tools/test.ps1 -Test "res://test/unit/"
 
-# Run specific test file
-pwsh ./tools/test.ps1 -Test "res://test/unit/test_inventory.gd"
+# Continue running all tests even after failures
+pwsh ./tools/test.ps1 -Continue
 ```
 
 Test exit codes: 0=pass, 1=failures, 124=timeout.
-
-**Note:** For gameplay logic tests, use `dotnet test` (see Building & Testing C# above).
 
 ### Validation & Linting
 ```bash
@@ -131,8 +129,9 @@ res://
   util/            # Camera rigs, markers, utilities
   game/            # AutoLoads and global state
   data/            # Resource definitions (items, verbs)
+  test/            # gdUnit4 test suites
   tools/           # Linting and setup scripts (GDScript, not shipped)
-  addons/          # Third-party addons (GUT, GdUnit4)
+  addons/          # Third-party addons (gdUnit4)
 ```
 
 ## GDScript Conventions (Editor Tools Only)
@@ -172,9 +171,10 @@ GDScript is reserved for editor tooling and tiny glue scripts. For gameplay logi
 Before committing:
 1. `dotnet build -warnaserror` - C# must compile without warnings
 2. `dotnet test` - All C# tests must pass
-3. `pwsh ./tools/godot.ps1 --headless --script res://tools/lint_project.gd` (UIDs + scene warnings)
-4. If GDScript modified: `gdlint path/to/file.gd` for style, plus Godot's `--check-only` for semantic analysis
-5. Always check scenes for errors after editing
+3. `pwsh ./tools/test.ps1` - All gdUnit4 tests must pass (GDScript + C# via Godot runtime)
+4. `pwsh ./tools/godot.ps1 --headless --script res://tools/lint_project.gd` (UIDs + scene warnings)
+5. If GDScript modified: `gdlint path/to/file.gd` for style, plus Godot's `--check-only` for semantic analysis
+6. Always check scenes for errors after editing
 
 ## Important Notes
 
@@ -200,8 +200,8 @@ AutoLoads go in `game/` and are registered in `project.godot`. To add a new Auto
 
 ### C# Testing (Primary) - GdUnit4
 
-**Framework:** GdUnit4 (Version 6.x+)
-**Runner:** `dotnet test` or `pwsh ./tools/test.ps1`
+**Framework:** GdUnit4 (master branch for Godot 4.6 support)
+**Runner:** `pwsh ./tools/test.ps1` (GDScript + C# tests) or `dotnet test` (C# only)
 
 #### Core Guidelines
 1. **Framework:** STRICTLY use `GdUnit4`. Do not use `NUnit` or `MSTest` directly.
@@ -284,18 +284,36 @@ public class PlayerTests
 ```
 
 ### GDScript Testing (Editor Tools Only)
-GUT (Godot Unit Test) is available for GDScript editor tooling tests:
+gdUnit4 supports GDScript tests for editor tooling:
 - Test files go in `res://test/unit/` and `res://test/integration/`
-- Test files must be named `test_*.gd` and extend `GutTest`
+- Test files must be named `test_*.gd` and extend `GdUnitTestSuite`
 - Test methods must start with `test_`
-- Configuration in `.gutconfig.json`
-- GDScript must pass both style linting (`gdlint`) and semantic analysis (`--check-only`) if modified
+- Use `auto_free()` for automatic cleanup of test objects
 
 Example GDScript test (for editor tools):
 ```gdscript
-extends GutTest
+extends GdUnitTestSuite
 
-func test_player_starts_with_full_health() -> void:
-    var player := Player.new()
-    assert_eq(player.health, player.max_health)
+func test_example_passes() -> void:
+    assert_bool(true).is_true()
+
+func test_numeric_equality() -> void:
+    var expected := 42
+    var actual := 40 + 2
+    assert_int(actual).is_equal(expected)
+
+func test_with_auto_cleanup() -> void:
+    var node := auto_free(Node2D.new())
+    assert_object(node).is_not_null()
 ```
+
+#### GDScript Assertion Reference
+| Function | Example |
+|----------|---------|
+| `assert_bool(v)` | `.is_true()`, `.is_false()` |
+| `assert_int(v)` | `.is_equal(n)`, `.is_greater(n)`, `.is_between(a, b)` |
+| `assert_float(v)` | `.is_equal_approx(n, tolerance)` |
+| `assert_str(v)` | `.is_equal(s)`, `.contains(s)`, `.starts_with(s)` |
+| `assert_array(v)` | `.has_size(n)`, `.contains([items])`, `.is_empty()` |
+| `assert_object(v)` | `.is_null()`, `.is_not_null()`, `.is_instanceof(Type)` |
+| `assert_signal(obj)` | `await assert_signal(obj).is_emitted("signal_name")` |
