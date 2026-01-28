@@ -81,10 +81,10 @@ pwsh ./tools/godot.ps1 --headless --script res://tools/lint_project.gd
 pwsh ./tools/godot.ps1 --headless --script res://tools/lint_project.gd -- --scene res://path/to/scene.tscn
 
 # Lint all shaders
-pwsh ./tools/godot.ps1 --headless --script res://tools/lint_all_shaders.gd
+pwsh ./tools/godot.ps1 --headless --script res://tools/lint_shaders.gd
 
 # Lint single shader (use res:// path)
-pwsh ./tools/godot.ps1 --headless --script res://tools/shader_lint.gd -- res://path/to/shader.gdshader
+pwsh ./tools/godot.ps1 --headless --script res://tools/lint_shaders.gd -- res://path/to/shader.gdshader
 
 # GDScript linting (gdlint is on PATH)
 gdlint path/to/file.gd
@@ -101,7 +101,7 @@ gdlint path/to/file.gd
 **Always lint after changes:**
 1. `gdlint` for modified GDScript files
 2. `lint_project.gd` for scene/UID validation
-3. `shader_lint.gd` for modified shaders
+3. `lint_shaders.gd` for modified shaders
 4. Use short timeouts (20s max) when running Godot commands
 
 ### Setup

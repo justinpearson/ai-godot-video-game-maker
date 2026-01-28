@@ -1,4 +1,4 @@
-# Lint GUT test files for problematic patterns
+# Lint gdUnit4 test files for problematic patterns
 # Usage: pwsh ./tools/lint_tests.ps1
 #
 # Exit codes:
@@ -7,7 +7,7 @@
 #   2 = Errors found (must fix)
 #
 # This script detects:
-#   - Missing extends GutTest
+#   - Missing extends GdUnitTestSuite
 #   - Tests without assertions
 #   - Potential infinite loops
 
@@ -38,9 +38,9 @@ function Add-Error($file, $line, $message) {
     $script:exitCode = 2
 }
 
-Write-Host "Linting GUT test files..." -ForegroundColor Cyan
+Write-Host "Linting gdUnit4 test files..." -ForegroundColor Cyan
 
-# Get all test files (GUT convention: test_*.gd)
+# Get all test files (gdUnit4 convention: test_*.gd)
 $testDirs = @("test/unit", "test/integration", "test")
 $testFiles = @()
 foreach ($dir in $testDirs) {
@@ -54,12 +54,12 @@ if ($testFiles.Count -eq 0) {
     exit 0
 }
 
-# Pattern 1: Check for extends GutTest
-Write-Host "  Checking for 'extends GutTest'..." -ForegroundColor Gray
+# Pattern 1: Check for extends GdUnitTestSuite
+Write-Host "  Checking for 'extends GdUnitTestSuite'..." -ForegroundColor Gray
 foreach ($file in $testFiles) {
     $content = Get-Content $file.FullName -Raw
-    if ($content -notmatch 'extends\s+GutTest') {
-        Add-Error $file.Name 1 "Test file must 'extends GutTest'"
+    if ($content -notmatch 'extends\s+GdUnitTestSuite') {
+        Add-Error $file.Name 1 "Test file must 'extends GdUnitTestSuite'"
     }
 }
 
@@ -92,7 +92,8 @@ foreach ($file in $testFiles) {
     foreach ($match in $testMatches) {
         $testName = $match.Groups[1].Value
         $testBody = $match.Groups[2].Value
-        if ($testBody -notmatch 'assert_|pass_test|fail_test|pending') {
+        # gdUnit4 uses fluent assertions: assert_bool(), assert_int(), assert_str(), etc.
+        if ($testBody -notmatch 'assert_bool|assert_int|assert_float|assert_str|assert_array|assert_dict|assert_object|assert_signal|assert_vector|assert_that|assert_file|assert_result|assert_failure|fail\(') {
             Add-Warning $file.Name 0 "Test '$testName' has no assertions"
         }
     }
