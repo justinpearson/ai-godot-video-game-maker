@@ -37,6 +37,21 @@ TeaLeaves.Systems.*   # Core systems (EventBus, state machines, etc.)
 - Validate node setup in `_Ready()` with asserts
 - Use `GD.PushError()` for runtime issues, don't create silent fallbacks
 
+### Resource Patterns
+Custom Resource classes for data-driven configs:
+```csharp
+using Godot;
+
+[GlobalClass]
+public partial class ItemData : Resource
+{
+    [Export] public string DisplayName { get; set; }
+    [Export] public int StackSize { get; set; } = 1;
+    [Export] public Texture2D Icon { get; set; }
+}
+```
+Name resource files with descriptive suffixes: `sword.item.tres`, `open.verb.tres`
+
 ## Key Commands
 
 ### Building & Testing C#
@@ -85,6 +100,9 @@ pwsh ./tools/godot.ps1 --headless --script res://tools/lint_shaders.gd
 
 # Lint single shader (use res:// path)
 pwsh ./tools/godot.ps1 --headless --script res://tools/lint_shaders.gd -- res://path/to/shader.gdshader
+
+# Lint gdUnit4 test files for common issues
+pwsh ./tools/lint_tests.ps1
 
 # GDScript linting (gdlint is on PATH)
 gdlint path/to/file.gd
@@ -150,10 +168,6 @@ GDScript is reserved for editor tooling and tiny glue scripts. For gameplay logi
 - Keep comments meaningful and up to date
 - Do NOT add temporary comments like "Removed old system" or "Updated from 1.0"
 
-### Resource Patterns
-- Custom Resource classes for data (`extends Resource`)
-- Name resource files with descriptive suffixes: `.verb.tres`, `.item.tres`
-
 ### Node Organization
 - Keep nodes self-contained with clear responsibilities
 - Use groups for querying: `add_to_group("interactable")`
@@ -188,11 +202,24 @@ Before committing:
 
 AutoLoads go in `game/` and are registered in `project.godot`. To add a new AutoLoad:
 
-1. Create the script in `game/`, e.g., `game/game_state.gd`
+1. Create the C# class in `game/`, e.g., `game/GameState.cs`:
+   ```csharp
+   using Godot;
+
+   public partial class GameState : Node
+   {
+       public static GameState Instance { get; private set; }
+
+       public override void _Ready()
+       {
+           Instance = this;
+       }
+   }
+   ```
 2. Add to `project.godot` under `[autoload]`:
    ```ini
    [autoload]
-   GameState="*res://game/game_state.gd"
+   GameState="*res://game/GameState.cs"
    ```
    The `*` prefix means it's a singleton (most common).
 
