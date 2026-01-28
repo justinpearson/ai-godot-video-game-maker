@@ -6,6 +6,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **TeaLeaves** is a Godot 4.6 project using **C# for all gameplay logic** with GDScript reserved for editor tooling only. It uses Jolt Physics and Forward Plus rendering with D3D12 on Windows.
 
+## First-Time Setup
+
+Before working on this project for the first time:
+
+```powershell
+# 1. Restore NuGet packages (required for C# compilation)
+dotnet restore
+
+# 2. Verify C# builds successfully
+dotnet build -warnaserror
+
+# 3. Initialize input actions (adds WASD, jump, etc. to project.godot)
+pwsh ./tools/godot.ps1 --headless --script res://tools/setup_input_actions_cli.gd
+
+# 4. Run tests to verify everything works
+dotnet test
+pwsh ./tools/test.ps1
+```
+
+If `dotnet build` fails with missing SDK errors, ensure you have .NET 8.0 SDK installed and Godot 4.6+ Mono.
+
 ## Core Tenets
 
 - **C# for gameplay**, GDScript only for editor tooling or tiny glue
@@ -27,6 +48,194 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 TeaLeaves.*           # All gameplay code
 TeaLeaves.Systems.*   # Core systems (EventBus, state machines, etc.)
+```
+
+## EventBus Pattern
+
+The EventBus provides **typed, decoupled communication** between systems. Use it when:
+- Systems need to communicate without direct references
+- Multiple listeners need to respond to the same event
+- You want to avoid tight coupling between game systems
+
+### When to Use EventBus vs Godot Signals
+
+| Use EventBus | Use Godot Signals |
+|--------------|-------------------|
+| Cross-system communication (UI ↔ Gameplay) | Parent-child node communication |
+| Global events (game state changes, achievements) | Local component events (animation finished) |
+| Multiple unrelated listeners | Single known listener |
+| Events that need to survive scene changes | Scene-local events |
+
+### EventBus Implementation
+
+Create the EventBus as an AutoLoad in `game/EventBus.cs`:
+
+```csharp
+using Godot;
+using System;
+using System.Collections.Generic;
+
+namespace TeaLeaves.Systems
+{
+    /// <summary>
+    /// Typed event bus for decoupled cross-system communication.
+    /// Register as AutoLoad: EventBus="*res://game/EventBus.cs"
+    /// </summary>
+    public partial class EventBus : Node
+    {
+        public static EventBus Instance { get; private set; }
+
+        public override void _Ready()
+        {
+            Instance = this;
+        }
+
+        // --- Event Delegates (define one per event type) ---
+
+        public delegate void PlayerDamagedHandler(int damage, Node3D source);
+        public delegate void ItemCollectedHandler(string itemId, int quantity);
+        public delegate void GameStateChangedHandler(GameState oldState, GameState newState);
+        public delegate void InteractionHandler(Node3D target, string verbId);
+
+        // --- Events (subscribers connect to these) ---
+
+        public event PlayerDamagedHandler PlayerDamaged;
+        public event ItemCollectedHandler ItemCollected;
+        public event GameStateChangedHandler GameStateChanged;
+        public event InteractionHandler InteractionStarted;
+        public event InteractionHandler InteractionCompleted;
+
+        // --- Emit Methods (publishers call these) ---
+
+        public void EmitPlayerDamaged(int damage, Node3D source)
+        {
+            PlayerDamaged?.Invoke(damage, source);
+        }
+
+        public void EmitItemCollected(string itemId, int quantity = 1)
+        {
+            ItemCollected?.Invoke(itemId, quantity);
+        }
+
+        public void EmitGameStateChanged(GameState oldState, GameState newState)
+        {
+            GameStateChanged?.Invoke(oldState, newState);
+        }
+
+        public void EmitInteractionStarted(Node3D target, string verbId)
+        {
+            InteractionStarted?.Invoke(target, verbId);
+        }
+
+        public void EmitInteractionCompleted(Node3D target, string verbId)
+        {
+            InteractionCompleted?.Invoke(target, verbId);
+        }
+    }
+
+    // Define enums/types used by events
+    public enum GameState { MainMenu, Playing, Paused, Cutscene, GameOver }
+}
+```
+
+### Subscribing to Events
+
+```csharp
+using Godot;
+using TeaLeaves.Systems;
+
+public partial class HealthBar : Control
+{
+    public override void _Ready()
+    {
+        // Subscribe to event
+        EventBus.Instance.PlayerDamaged += OnPlayerDamaged;
+    }
+
+    public override void _ExitTree()
+    {
+        // CRITICAL: Always unsubscribe to prevent memory leaks
+        EventBus.Instance.PlayerDamaged -= OnPlayerDamaged;
+    }
+
+    private void OnPlayerDamaged(int damage, Node3D source)
+    {
+        // Update UI in response to event
+        GD.Print($"Player took {damage} damage from {source.Name}");
+        UpdateHealthDisplay();
+    }
+}
+```
+
+### Emitting Events
+
+```csharp
+using Godot;
+using TeaLeaves.Systems;
+
+public partial class Enemy : CharacterBody3D
+{
+    [Export] public int AttackDamage { get; set; } = 10;
+
+    private void Attack(Node3D target)
+    {
+        // Emit event - all subscribers will be notified
+        EventBus.Instance.EmitPlayerDamaged(AttackDamage, this);
+    }
+}
+```
+
+### Adding New Events
+
+To add a new event type:
+
+1. **Define the delegate** with typed parameters:
+   ```csharp
+   public delegate void QuestCompletedHandler(string questId, int rewardXp);
+   ```
+
+2. **Declare the event**:
+   ```csharp
+   public event QuestCompletedHandler QuestCompleted;
+   ```
+
+3. **Create the emit method**:
+   ```csharp
+   public void EmitQuestCompleted(string questId, int rewardXp)
+   {
+       QuestCompleted?.Invoke(questId, rewardXp);
+   }
+   ```
+
+### EventBus Best Practices
+
+1. **Always unsubscribe in `_ExitTree()`** - Prevents memory leaks and null reference errors
+2. **Use descriptive event names** - `PlayerDamaged` not `Damaged`, `ItemCollected` not `Item`
+3. **Keep event parameters immutable** - Pass primitives or readonly structs, not mutable objects
+4. **Don't emit events in constructors** - Wait until `_Ready()` when EventBus.Instance is available
+5. **Validate before emitting** - Check that EventBus.Instance is not null in edge cases
+
+### Testing EventBus
+
+```csharp
+[TestSuite]
+public class EventBusTests
+{
+    [TestCase]
+    public void EmitPlayerDamaged_NotifiesSubscribers()
+    {
+        // Arrange
+        var bus = new EventBus();
+        int receivedDamage = 0;
+        bus.PlayerDamaged += (damage, source) => receivedDamage = damage;
+
+        // Act
+        bus.EmitPlayerDamaged(25, null);
+
+        // Assert
+        AssertInt(receivedDamage).IsEqual(25);
+    }
+}
 ```
 
 ## C# Conventions
