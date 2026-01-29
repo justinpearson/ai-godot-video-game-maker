@@ -30,6 +30,9 @@
 bin/
 obj/
 
+# Exception: gdUnit4 CLI tools (not .NET output)
+!addons/gdUnit4/bin/
+
 # NuGet packages (restored on build)
 *.nupkg
 .nuget/
@@ -157,3 +160,4 @@ docs/_build/
 # Backup files
 *.bak
 *.backup
+reports/

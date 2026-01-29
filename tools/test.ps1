@@ -29,9 +29,11 @@ $godot = Resolve-GodotPath
 
 # Build argument list for gdUnit4 CLI
 # gdUnit4 uses: godot -s res://addons/gdUnit4/bin/GdUnitCmdTool.gd [options]
+# Note: --ignoreHeadlessMode is required because gdUnit4 v6+ blocks headless by default
 $gdunitArgs = @(
     "--headless",
     "-s", "res://addons/gdUnit4/bin/GdUnitCmdTool.gd",
+    "--ignoreHeadlessMode",
     "-a", $Test
 )
 
