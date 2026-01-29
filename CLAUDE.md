@@ -418,9 +418,10 @@ res://
   levels/          # Level scenes and scripts
   ui/              # HUD and menus
   util/            # Camera rigs, markers, utilities
-  game/            # AutoLoads and global state
+  game/            # AutoLoads and global state (DevTools, EventBus)
   data/            # Resource definitions (items, verbs)
   test/            # gdUnit4 test suites
+    sequences/     # Input simulation sequences (JSON files)
   tools/           # Linting and setup scripts (GDScript, not shipped)
   addons/          # Third-party addons (gdUnit4)
 ```
@@ -657,6 +658,8 @@ DevTools is an AutoLoad (`game/DevTools.cs`) that enables runtime introspection 
 | **Check FPS/memory** | `python tools/devtools.py performance` | Requires game running |
 | **Inspect node state** | `python tools/devtools.py get-state --node "/root/..."` | Debug runtime values |
 | **Debug node hierarchy** | `python tools/devtools.py scene-tree` | Requires game running |
+| **Simulate player input** | `python tools/devtools.py input tap jump` | Automated gameplay testing |
+| **Run input sequence** | `python tools/devtools.py input sequence test.json` | Complex input patterns |
 
 ### DevTools CLI Commands
 
@@ -694,6 +697,106 @@ python tools/devtools.py logs --tail 20
 python tools/devtools.py quit
 ```
 
+### Input Simulation (Automated Gameplay Testing)
+
+DevTools can simulate player input for automated gameplay validation. **Use input simulation with screenshots** to verify gameplay behavior without manual testing.
+
+```powershell
+# List available input actions
+python tools/devtools.py input list
+python tools/devtools.py input list --all  # Include ui_* actions
+
+# Press and hold an action
+python tools/devtools.py input press move_forward
+
+# Release a held action
+python tools/devtools.py input release move_forward
+
+# Tap (press + release) an action
+python tools/devtools.py input tap jump
+python tools/devtools.py input tap jump --hold 0.5  # Hold 500ms then release
+
+# Release all simulated inputs
+python tools/devtools.py input clear
+
+# Execute a sequence from a JSON file
+python tools/devtools.py input sequence test/sequences/my_test.json
+```
+
+**Key design principle**: Input simulation uses Godot's action-based system (`Input.ActionPress`/`Input.ActionRelease`), not raw keycodes. This means tests work regardless of key bindings.
+
+### Input Sequence Files
+
+For complex input patterns, create JSON sequence files in `test/sequences/`:
+
+```json
+{
+  "description": "Test jump while moving forward",
+  "steps": [
+    {"type": "wait", "seconds": 0.5},
+    {"type": "press", "action": "move_forward"},
+    {"type": "wait", "seconds": 1.0},
+    {"type": "tap", "action": "jump"},
+    {"type": "wait", "seconds": 0.5},
+    {"type": "screenshot", "filename": "mid_jump.png"},
+    {"type": "release", "action": "move_forward"},
+    {"type": "clear"}
+  ]
+}
+```
+
+**Sequence step types:**
+
+| Type | Required Fields | Description |
+|------|-----------------|-------------|
+| `press` | `action` | Press and hold (add `strength` 0.0-1.0 for analog) |
+| `release` | `action` | Release a held action |
+| `tap` | `action` | Press, wait one frame, release |
+| `hold` | `action`, `seconds` | Press, wait duration, release |
+| `wait` | `seconds` | Pause without input |
+| `screenshot` | - | Capture frame (optional `filename`) |
+| `assert` | `node`, `property`, `equals` | Verify game state |
+| `clear` | - | Release all simulated inputs |
+
+### Automated Gameplay Verification Workflow
+
+**RECOMMENDED**: Combine input simulation with screenshots to verify gameplay changes work correctly. This is especially useful for:
+- Movement and physics changes
+- Jump mechanics and gravity
+- Combat systems and hit detection
+- UI state changes from player actions
+- Animation triggers
+
+```powershell
+# 1. Start the game
+pwsh ./tools/godot.ps1 &
+
+# 2. Verify connection
+python tools/devtools.py ping
+
+# 3. Simulate gameplay and capture results
+python tools/devtools.py input tap jump
+python tools/devtools.py screenshot --filename "jump_test.png"
+
+# 4. Or run a complete sequence
+python tools/devtools.py input sequence test/sequences/test_movement.json
+
+# 5. Check the screenshots to verify behavior
+# Screenshots are saved to: %APPDATA%/Godot/app_userdata/TeaLeaves/screenshots/
+```
+
+**Example: Verifying a jump fix**
+```powershell
+# After fixing jump height, verify it works:
+python tools/devtools.py input press move_forward
+python tools/devtools.py input tap jump --hold 0.1
+Start-Sleep -Seconds 0.3
+python tools/devtools.py screenshot --filename "jump_apex.png"
+python tools/devtools.py input clear
+
+# Check the screenshot to confirm jump height is correct
+```
+
 ### Agentic Iteration Workflow
 
 For iterative development with visual feedback:
@@ -708,15 +811,22 @@ python tools/devtools.py ping
 # 3. Make code changes, then:
 dotnet build -warnaserror
 
-# 4. Take screenshot to verify visual state
+# 4. Simulate input to test gameplay changes
+python tools/devtools.py input tap jump
+python tools/devtools.py input press move_forward
+
+# 5. Take screenshot to verify visual state
 python tools/devtools.py screenshot
 
-# 5. Check performance if needed
+# 6. Release inputs and check performance
+python tools/devtools.py input clear
 python tools/devtools.py performance
 
-# 6. When done, quit cleanly
+# 7. When done, quit cleanly
 python tools/devtools.py quit
 ```
+
+**Pro tip**: After making gameplay changes (movement speed, jump height, physics, etc.), always use input simulation + screenshot to verify the changes work as expected before committing.
 
 ### Structured Logging
 
@@ -768,6 +878,9 @@ python tools/devtools.py logs --tail 20 --category player
 | Validate runtime assets | `python tools/devtools.py validate-all` (game must be running) |
 | Take a screenshot | `python tools/devtools.py screenshot` (game must be running) |
 | Check performance | `python tools/devtools.py performance` (game must be running) |
+| Simulate player input | `python tools/devtools.py input tap jump` (game must be running) |
+| Run input sequence | `python tools/devtools.py input sequence file.json` (game must be running) |
+| List input actions | `python tools/devtools.py input list` (game must be running) |
 | Lint GDScript | `gdlint path/to/file.gd` |
 | Lint shaders | `pwsh ./tools/godot.ps1 --headless --script res://tools/lint_shaders.gd` |
 | Lint test files | `pwsh ./tools/lint_tests.ps1` |

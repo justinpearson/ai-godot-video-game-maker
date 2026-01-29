@@ -2,6 +2,7 @@ using Godot;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -17,6 +18,7 @@ namespace TeaLeaves.Systems
     /// - Validate scenes at runtime
     /// - Inspect/modify node state
     /// - Monitor performance
+    /// - Simulate input for automated testing
     /// </summary>
     public partial class DevTools : Node
     {
@@ -31,6 +33,9 @@ namespace TeaLeaves.Systems
         private bool _headlessMode;
 
         private Dictionary<string, Func<JsonElement, CommandResult>> _handlers = new();
+
+        // Input simulation state tracking
+        private HashSet<string> _activeSimulatedInputs = new();
 
         public static DevTools? Instance { get; private set; }
 
@@ -75,7 +80,20 @@ namespace TeaLeaves.Systems
                 ["performance"] = CmdPerformance,
                 ["quit"] = CmdQuit,
                 ["ping"] = _ => new CommandResult(true, "pong", new { timestamp = Time.GetUnixTimeFromSystem() }),
+                // Input simulation
+                ["input_press"] = CmdInputPress,
+                ["input_release"] = CmdInputRelease,
+                ["input_tap"] = CmdInputTap,
+                ["input_clear"] = CmdInputClear,
+                ["input_actions"] = CmdInputActions,
+                ["input_sequence"] = CmdInputSequence,
             };
+        }
+
+        public override void _ExitTree()
+        {
+            // Release all simulated inputs on exit
+            ClearAllSimulatedInputs();
         }
 
         private void ProcessCommandLineArgs()
@@ -426,6 +444,337 @@ namespace TeaLeaves.Systems
             var exitCode = args.ValueKind != JsonValueKind.Undefined && args.TryGetProperty("exit_code", out var ec) ? ec.GetInt32() : 0;
             GetTree().Quit(exitCode);
             return new CommandResult(true, "Quitting");
+        }
+
+        // ==================== INPUT SIMULATION ====================
+
+        private CommandResult CmdInputPress(JsonElement args)
+        {
+            if (args.ValueKind == JsonValueKind.Undefined || !args.TryGetProperty("action", out var actionEl))
+                return new CommandResult(false, "Missing 'action' argument");
+
+            var action = actionEl.GetString();
+            if (string.IsNullOrEmpty(action))
+                return new CommandResult(false, "Invalid 'action' argument");
+
+            if (!InputMap.HasAction(action))
+                return new CommandResult(false, $"Unknown action: {action}. Use 'input_actions' to list available actions.");
+
+            var strength = args.TryGetProperty("strength", out var strengthEl) ? (float)strengthEl.GetDouble() : 1.0f;
+            strength = Mathf.Clamp(strength, 0.0f, 1.0f);
+
+            Input.ActionPress(action, strength);
+            _activeSimulatedInputs.Add(action);
+
+            Log("input", $"Pressed action: {action}", new { action, strength });
+            return new CommandResult(true, $"Pressed: {action}", new { action, strength, active_inputs = _activeSimulatedInputs.ToArray() });
+        }
+
+        private CommandResult CmdInputRelease(JsonElement args)
+        {
+            if (args.ValueKind == JsonValueKind.Undefined || !args.TryGetProperty("action", out var actionEl))
+                return new CommandResult(false, "Missing 'action' argument");
+
+            var action = actionEl.GetString();
+            if (string.IsNullOrEmpty(action))
+                return new CommandResult(false, "Invalid 'action' argument");
+
+            if (!InputMap.HasAction(action))
+                return new CommandResult(false, $"Unknown action: {action}. Use 'input_actions' to list available actions.");
+
+            Input.ActionRelease(action);
+            _activeSimulatedInputs.Remove(action);
+
+            Log("input", $"Released action: {action}", new { action });
+            return new CommandResult(true, $"Released: {action}", new { action, active_inputs = _activeSimulatedInputs.ToArray() });
+        }
+
+        private CommandResult CmdInputTap(JsonElement args)
+        {
+            if (args.ValueKind == JsonValueKind.Undefined || !args.TryGetProperty("action", out var actionEl))
+                return new CommandResult(false, "Missing 'action' argument");
+
+            var action = actionEl.GetString();
+            if (string.IsNullOrEmpty(action))
+                return new CommandResult(false, "Invalid 'action' argument");
+
+            if (!InputMap.HasAction(action))
+                return new CommandResult(false, $"Unknown action: {action}. Use 'input_actions' to list available actions.");
+
+            var holdSeconds = args.TryGetProperty("hold_seconds", out var holdEl) ? holdEl.GetDouble() : 0.0;
+            var strength = args.TryGetProperty("strength", out var strengthEl) ? (float)strengthEl.GetDouble() : 1.0f;
+            strength = Mathf.Clamp(strength, 0.0f, 1.0f);
+
+            Input.ActionPress(action, strength);
+            _activeSimulatedInputs.Add(action);
+
+            if (holdSeconds > 0)
+            {
+                // Schedule release after hold duration
+                GetTree().CreateTimer(holdSeconds).Timeout += () =>
+                {
+                    Input.ActionRelease(action);
+                    _activeSimulatedInputs.Remove(action);
+                    Log("input", $"Released action after hold: {action}", new { action, hold_seconds = holdSeconds });
+                };
+            }
+            else
+            {
+                // Release on next frame for a single-frame tap
+                GetTree().CreateTimer(0.0).Timeout += () =>
+                {
+                    Input.ActionRelease(action);
+                    _activeSimulatedInputs.Remove(action);
+                    Log("input", $"Released action (tap): {action}", new { action });
+                };
+            }
+
+            Log("input", $"Tapped action: {action}", new { action, hold_seconds = holdSeconds, strength });
+            return new CommandResult(true, $"Tapped: {action}", new { action, hold_seconds = holdSeconds, strength });
+        }
+
+        private CommandResult CmdInputClear(JsonElement args)
+        {
+            var cleared = ClearAllSimulatedInputs();
+            return new CommandResult(true, $"Cleared {cleared.Length} inputs", new { cleared_actions = cleared });
+        }
+
+        private string[] ClearAllSimulatedInputs()
+        {
+            var cleared = _activeSimulatedInputs.ToArray();
+            foreach (var action in cleared)
+            {
+                Input.ActionRelease(action);
+            }
+            _activeSimulatedInputs.Clear();
+            if (cleared.Length > 0)
+            {
+                Log("input", $"Cleared all simulated inputs", new { count = cleared.Length, actions = cleared });
+            }
+            return cleared;
+        }
+
+        private CommandResult CmdInputActions(JsonElement args)
+        {
+            var actions = InputMap.GetActions();
+            var actionList = new List<object>();
+
+            foreach (var action in actions)
+            {
+                var actionName = action.ToString();
+                // Skip built-in UI actions by default unless requested
+                var includeBuiltin = args.TryGetProperty("include_builtin", out var builtinEl) && builtinEl.GetBoolean();
+                if (!includeBuiltin && actionName.StartsWith("ui_"))
+                    continue;
+
+                var events = InputMap.ActionGetEvents(action);
+                var eventDescriptions = new List<string>();
+                foreach (var evt in events)
+                {
+                    eventDescriptions.Add(evt.AsText());
+                }
+
+                actionList.Add(new
+                {
+                    name = actionName,
+                    events = eventDescriptions,
+                    is_pressed = Input.IsActionPressed(action)
+                });
+            }
+
+            return new CommandResult(true, $"Found {actionList.Count} actions", new { actions = actionList });
+        }
+
+        private CommandResult CmdInputSequence(JsonElement args)
+        {
+            if (args.ValueKind == JsonValueKind.Undefined || !args.TryGetProperty("steps", out var stepsEl))
+                return new CommandResult(false, "Missing 'steps' argument");
+
+            if (stepsEl.ValueKind != JsonValueKind.Array)
+                return new CommandResult(false, "'steps' must be an array");
+
+            var steps = new List<SequenceStep>();
+            int stepIndex = 0;
+
+            foreach (var stepEl in stepsEl.EnumerateArray())
+            {
+                if (!stepEl.TryGetProperty("type", out var typeEl))
+                    return new CommandResult(false, $"Step {stepIndex}: missing 'type'");
+
+                var stepType = typeEl.GetString();
+                var step = new SequenceStep { Type = stepType ?? "", Index = stepIndex };
+
+                switch (stepType)
+                {
+                    case "press":
+                    case "release":
+                    case "tap":
+                    case "hold":
+                        if (!stepEl.TryGetProperty("action", out var actionEl))
+                            return new CommandResult(false, $"Step {stepIndex}: '{stepType}' requires 'action'");
+                        step.Action = actionEl.GetString() ?? "";
+                        if (!InputMap.HasAction(step.Action))
+                            return new CommandResult(false, $"Step {stepIndex}: unknown action '{step.Action}'");
+                        if (stepEl.TryGetProperty("seconds", out var secEl))
+                            step.Seconds = secEl.GetDouble();
+                        if (stepEl.TryGetProperty("strength", out var strEl))
+                            step.Strength = (float)strEl.GetDouble();
+                        break;
+
+                    case "wait":
+                        if (!stepEl.TryGetProperty("seconds", out var waitEl))
+                            return new CommandResult(false, $"Step {stepIndex}: 'wait' requires 'seconds'");
+                        step.Seconds = waitEl.GetDouble();
+                        break;
+
+                    case "screenshot":
+                        if (stepEl.TryGetProperty("filename", out var fnEl))
+                            step.Filename = fnEl.GetString();
+                        break;
+
+                    case "assert":
+                        if (!stepEl.TryGetProperty("node", out var nodeEl))
+                            return new CommandResult(false, $"Step {stepIndex}: 'assert' requires 'node'");
+                        if (!stepEl.TryGetProperty("property", out var propEl))
+                            return new CommandResult(false, $"Step {stepIndex}: 'assert' requires 'property'");
+                        if (!stepEl.TryGetProperty("equals", out var equalsEl))
+                            return new CommandResult(false, $"Step {stepIndex}: 'assert' requires 'equals'");
+                        step.NodePath = nodeEl.GetString() ?? "";
+                        step.Property = propEl.GetString() ?? "";
+                        step.ExpectedValue = equalsEl;
+                        break;
+
+                    case "clear":
+                        // No additional args needed
+                        break;
+
+                    default:
+                        return new CommandResult(false, $"Step {stepIndex}: unknown step type '{stepType}'");
+                }
+
+                steps.Add(step);
+                stepIndex++;
+            }
+
+            // Execute sequence asynchronously
+            var sequenceId = Guid.NewGuid().ToString("N")[..8];
+            var timeout = args.TryGetProperty("timeout", out var timeoutEl) ? timeoutEl.GetDouble() : 60.0;
+
+            Log("input", $"Starting sequence {sequenceId}", new { step_count = steps.Count, timeout });
+            ExecuteSequenceAsync(sequenceId, steps, timeout);
+
+            return new CommandResult(true, $"Sequence {sequenceId} started with {steps.Count} steps",
+                new { sequence_id = sequenceId, step_count = steps.Count });
+        }
+
+        private async void ExecuteSequenceAsync(string sequenceId, List<SequenceStep> steps, double timeout)
+        {
+            var results = new List<object>();
+            var startTime = Time.GetUnixTimeFromSystem();
+
+            foreach (var step in steps)
+            {
+                // Check timeout
+                if (Time.GetUnixTimeFromSystem() - startTime > timeout)
+                {
+                    Log("input", $"Sequence {sequenceId} timed out at step {step.Index}", null);
+                    results.Add(new { step = step.Index, type = step.Type, status = "timeout" });
+                    break;
+                }
+
+                try
+                {
+                    var stepResult = await ExecuteStepAsync(step);
+                    results.Add(new { step = step.Index, type = step.Type, status = "ok", result = stepResult });
+                    Log("input", $"Sequence {sequenceId} step {step.Index} ({step.Type}) completed", stepResult);
+                }
+                catch (Exception ex)
+                {
+                    results.Add(new { step = step.Index, type = step.Type, status = "error", error = ex.Message });
+                    Log("input", $"Sequence {sequenceId} step {step.Index} failed: {ex.Message}", null);
+                    break;
+                }
+            }
+
+            Log("input", $"Sequence {sequenceId} completed", new { step_count = results.Count });
+        }
+
+        private async System.Threading.Tasks.Task<object?> ExecuteStepAsync(SequenceStep step)
+        {
+            switch (step.Type)
+            {
+                case "press":
+                    Input.ActionPress(step.Action, step.Strength);
+                    _activeSimulatedInputs.Add(step.Action);
+                    return new { action = step.Action };
+
+                case "release":
+                    Input.ActionRelease(step.Action);
+                    _activeSimulatedInputs.Remove(step.Action);
+                    return new { action = step.Action };
+
+                case "tap":
+                    Input.ActionPress(step.Action, step.Strength);
+                    _activeSimulatedInputs.Add(step.Action);
+                    await ToSignal(GetTree().CreateTimer(step.Seconds > 0 ? step.Seconds : GetPhysicsProcessDeltaTime()), SceneTreeTimer.SignalName.Timeout);
+                    Input.ActionRelease(step.Action);
+                    _activeSimulatedInputs.Remove(step.Action);
+                    return new { action = step.Action, hold_seconds = step.Seconds };
+
+                case "hold":
+                    Input.ActionPress(step.Action, step.Strength);
+                    _activeSimulatedInputs.Add(step.Action);
+                    await ToSignal(GetTree().CreateTimer(step.Seconds), SceneTreeTimer.SignalName.Timeout);
+                    Input.ActionRelease(step.Action);
+                    _activeSimulatedInputs.Remove(step.Action);
+                    return new { action = step.Action, hold_seconds = step.Seconds };
+
+                case "wait":
+                    await ToSignal(GetTree().CreateTimer(step.Seconds), SceneTreeTimer.SignalName.Timeout);
+                    return new { waited_seconds = step.Seconds };
+
+                case "screenshot":
+                    var filename = step.Filename ?? $"sequence_{DateTime.Now:yyyyMMdd_HHmmss}.png";
+                    var ssResult = CmdScreenshot(JsonDocument.Parse($"{{\"filename\":\"{filename}\"}}").RootElement);
+                    return ssResult.Data;
+
+                case "assert":
+                    var currentScene = GetTree().CurrentScene;
+                    if (currentScene == null)
+                        throw new InvalidOperationException("No current scene");
+
+                    var target = currentScene.GetNodeOrNull(step.NodePath);
+                    if (target == null)
+                        throw new InvalidOperationException($"Node not found: {step.NodePath}");
+
+                    var actualValue = target.Get(step.Property);
+                    var expectedVariant = JsonToVariant(step.ExpectedValue);
+
+                    if (!actualValue.Equals(expectedVariant))
+                        throw new InvalidOperationException($"Assertion failed: {step.NodePath}.{step.Property} = {actualValue}, expected {expectedVariant}");
+
+                    return new { node = step.NodePath, property = step.Property, value = SerializeVariant(actualValue) };
+
+                case "clear":
+                    var cleared = ClearAllSimulatedInputs();
+                    return new { cleared_actions = cleared };
+
+                default:
+                    throw new InvalidOperationException($"Unknown step type: {step.Type}");
+            }
+        }
+
+        private class SequenceStep
+        {
+            public string Type { get; set; } = "";
+            public int Index { get; set; }
+            public string Action { get; set; } = "";
+            public double Seconds { get; set; }
+            public float Strength { get; set; } = 1.0f;
+            public string? Filename { get; set; }
+            public string NodePath { get; set; } = "";
+            public string Property { get; set; } = "";
+            public JsonElement ExpectedValue { get; set; }
         }
 
         // ==================== UTILITIES ====================

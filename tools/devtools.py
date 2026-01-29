@@ -286,6 +286,125 @@ def cmd_quit(args, project_path: Path):
         print("Quit command sent (no response expected)")
 
 
+# ==================== INPUT SIMULATION ====================
+
+
+def cmd_input_press(args, project_path: Path):
+    """Press and hold an input action."""
+    cmd_args = {"action": args.action}
+    if args.strength is not None:
+        cmd_args["strength"] = args.strength
+
+    result = send_command(project_path, "input_press", cmd_args)
+    if result["success"]:
+        print(f"Pressed: {args.action}")
+        if result.get("data", {}).get("active_inputs"):
+            print(f"Active inputs: {', '.join(result['data']['active_inputs'])}")
+    else:
+        print(f"Failed: {result['message']}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_input_release(args, project_path: Path):
+    """Release an input action."""
+    result = send_command(project_path, "input_release", {"action": args.action})
+    if result["success"]:
+        print(f"Released: {args.action}")
+        if result.get("data", {}).get("active_inputs"):
+            print(f"Active inputs: {', '.join(result['data']['active_inputs'])}")
+    else:
+        print(f"Failed: {result['message']}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_input_tap(args, project_path: Path):
+    """Tap (press and release) an input action."""
+    cmd_args = {"action": args.action}
+    if args.hold:
+        cmd_args["hold_seconds"] = args.hold
+    if args.strength is not None:
+        cmd_args["strength"] = args.strength
+
+    result = send_command(project_path, "input_tap", cmd_args)
+    if result["success"]:
+        hold_info = f" (hold: {args.hold}s)" if args.hold else ""
+        print(f"Tapped: {args.action}{hold_info}")
+    else:
+        print(f"Failed: {result['message']}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_input_clear(args, project_path: Path):
+    """Release all simulated inputs."""
+    result = send_command(project_path, "input_clear")
+    if result["success"]:
+        cleared = result.get("data", {}).get("cleared_actions", [])
+        if cleared:
+            print(f"Cleared {len(cleared)} inputs: {', '.join(cleared)}")
+        else:
+            print("No active inputs to clear")
+    else:
+        print(f"Failed: {result['message']}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_input_list(args, project_path: Path):
+    """List available input actions."""
+    cmd_args = {"include_builtin": args.all}
+    result = send_command(project_path, "input_actions", cmd_args)
+    if result["success"]:
+        actions = result.get("data", {}).get("actions", [])
+        if not actions:
+            print("No actions found")
+            return
+
+        print(f"Available actions ({len(actions)}):")
+        for action in actions:
+            pressed = " [PRESSED]" if action.get("is_pressed") else ""
+            events = ", ".join(action.get("events", [])) or "(no keys)"
+            print(f"  {action['name']}{pressed}: {events}")
+    else:
+        print(f"Failed: {result['message']}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_input_sequence(args, project_path: Path):
+    """Execute an input sequence from a JSON file."""
+    seq_path = Path(args.file)
+    if not seq_path.exists():
+        print(f"Error: Sequence file not found: {args.file}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        with open(seq_path, encoding="utf-8") as f:
+            seq_data = json.load(f)
+    except json.JSONDecodeError as e:
+        print(f"Error: Invalid JSON in sequence file: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    steps = seq_data.get("steps", [])
+    if not steps:
+        print("Error: Sequence has no steps", file=sys.stderr)
+        sys.exit(1)
+
+    description = seq_data.get("description", "")
+    if description:
+        print(f"Running sequence: {description}")
+    print(f"Executing {len(steps)} steps...")
+
+    cmd_args = {"steps": steps}
+    if args.timeout:
+        cmd_args["timeout"] = args.timeout
+
+    result = send_command(project_path, "input_sequence", cmd_args, timeout=args.timeout + 10 if args.timeout else 70)
+    if result["success"]:
+        print(f"Sequence started: {result.get('data', {}).get('sequence_id', 'unknown')}")
+        print("Note: Sequence runs asynchronously. Check logs for completion.")
+    else:
+        print(f"Failed: {result['message']}", file=sys.stderr)
+        sys.exit(1)
+
+
 def main():
     parser = argparse.ArgumentParser(description="DevTools CLI - interact with running Godot instance")
     parser.add_argument("--project", "-p", help="Path to Godot project", default=".")
@@ -348,6 +467,43 @@ def main():
     p = subparsers.add_parser("quit", help="Quit Godot")
     p.add_argument("--exit-code", type=int, help="Exit code")
     p.set_defaults(func=cmd_quit)
+
+    # input - nested subcommands for input simulation
+    input_parser = subparsers.add_parser("input", help="Simulate input actions")
+    input_sub = input_parser.add_subparsers(dest="input_command", required=True)
+
+    # input press
+    p = input_sub.add_parser("press", help="Press and hold an action")
+    p.add_argument("action", help="Action name (e.g., jump, move_left)")
+    p.add_argument("--strength", type=float, help="Pressure strength 0.0-1.0 (default: 1.0)")
+    p.set_defaults(func=cmd_input_press)
+
+    # input release
+    p = input_sub.add_parser("release", help="Release a held action")
+    p.add_argument("action", help="Action name to release")
+    p.set_defaults(func=cmd_input_release)
+
+    # input tap
+    p = input_sub.add_parser("tap", help="Press and release an action")
+    p.add_argument("action", help="Action name to tap")
+    p.add_argument("--hold", type=float, default=0, help="Hold duration in seconds before release")
+    p.add_argument("--strength", type=float, help="Pressure strength 0.0-1.0 (default: 1.0)")
+    p.set_defaults(func=cmd_input_tap)
+
+    # input clear
+    p = input_sub.add_parser("clear", help="Release all simulated inputs")
+    p.set_defaults(func=cmd_input_clear)
+
+    # input list
+    p = input_sub.add_parser("list", help="List available input actions")
+    p.add_argument("--all", "-a", action="store_true", help="Include built-in ui_* actions")
+    p.set_defaults(func=cmd_input_list)
+
+    # input sequence
+    p = input_sub.add_parser("sequence", help="Execute input sequence from JSON file")
+    p.add_argument("file", help="Path to sequence JSON file")
+    p.add_argument("--timeout", type=float, default=60, help="Sequence timeout in seconds (default: 60)")
+    p.set_defaults(func=cmd_input_sequence)
 
     args = parser.parse_args()
 
