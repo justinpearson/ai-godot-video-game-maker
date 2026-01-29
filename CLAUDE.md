@@ -346,11 +346,19 @@ pwsh ./tools/test.ps1
 # Run tests in specific directory
 pwsh ./tools/test.ps1 -Test "res://test/unit/"
 
+# Run a specific test file
+pwsh ./tools/test.ps1 -Test "res://test/unit/test_example.gd"
+
 # Continue running all tests even after failures
 pwsh ./tools/test.ps1 -Continue
+
+# Custom timeout (default 60s)
+pwsh ./tools/test.ps1 -TimeoutSeconds 120
 ```
 
 Test exit codes: 0=pass, 1=failures, 124=timeout.
+
+**Troubleshooting**: If tests fail with "GdUnitCmdTool.gd not found", ensure `addons/gdUnit4/bin/` exists with `GdUnitCmdTool.gd` and `GdUnitCopyLog.gd`. These files are required for CLI test execution.
 
 ### Validation & Linting
 ```bash
