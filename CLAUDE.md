@@ -520,68 +520,57 @@ AutoLoads go in `game/` and are registered in `project.godot`. To add a new Auto
 
 ## Testing Infrastructure
 
-### C# Testing (Primary) - GdUnit4
+### Two GdUnit4 Runners
 
-**Framework:** GdUnit4 (master branch for Godot 4.6 support)
-**Runner:** `pwsh ./tools/test.ps1` (GDScript + C# tests) or `dotnet test` (C# only)
+| Runner | Use For | Command |
+|--------|---------|---------|
+| **dotnet test** | C# logic tests (via `gdUnit4.test.adapter`) | `dotnet test` |
+| **Godot CLI** | GDScript tests + tests needing engine runtime | `pwsh ./tools/test.ps1` |
 
-#### Core Guidelines
-1. **Framework:** STRICTLY use `GdUnit4`. Do not use `NUnit` or `MSTest` directly.
-2. **Imports:** Always include `using GdUnit4;` and `using static GdUnit4.Assertions;`.
-3. **Attributes:** Use `[TestSuite]` for classes and `[TestCase]` for methods.
-4. **Assertions:** Use GdUnit fluid assertions (e.g., `AssertBool(result).IsTrue()`, `AssertObject(node).IsNotNull()`).
-5. **Mocking:** Use GdUnit's built-in `Mock<T>()`. Do not use `Moq` as it fails with Godot objects.
+Both use GdUnit4 - same test syntax, different execution environments.
 
-#### Test Categories
-* **Logic Tests (POCO):** Test pure C# classes. Fast execution. DO NOT inherit from `Node`.
-* **Scene Tests (Integration):** Test Nodes, Scenes, and Physics.
-    * **MUST** add `[RequireGodotRuntime]` attribute to the method.
-    * **MUST** use `ISceneRunner` to load/instantiate scenes.
-    * **MUST** use `await` for frame processing (e.g., `await _runner.AwaitIdleFrame()`).
+### C# Testing with gdUnit4
 
-#### Anti-Patterns to Avoid (Cause Hangs)
-
-**NEVER do this** - causes infinite hangs:
-```csharp
-// BAD: ToSignal("ready") hangs because ready fires synchronously during AddChild
-root.AddChild(_panel);
-await _panel.ToSignal(_panel, "ready");  // HANGS FOREVER
+**Required packages** (in `.csproj`):
+```xml
+<PackageReference Include="gdUnit4.api" Version="5.*" />
+<PackageReference Include="gdUnit4.test.adapter" Version="3.*" />
+<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.*" />
 ```
 
-**Do this instead**:
+**Test pattern:**
 ```csharp
-// GOOD: Wait for next frame using process_frame signal
-root.AddChild(_panel);
-await GetTree().ToSignal(GetTree(), "process_frame");
-```
+using GdUnit4;
+using static GdUnit4.Assertions;
 
-**Other patterns to avoid:**
-- `while(true)` loops without break conditions
-- Frame loops with >200 iterations (slow tests)
-- Async tests without `[RequireGodotRuntime]` attribute
-
-#### Code Patterns
-
-**Pattern 1: Pure Logic Test (No Engine)**
-```csharp
 [TestSuite]
-public class InventoryTests
+public class GravityHelperTests
 {
     [TestCase]
-    public void AddItem_IncreasesCount()
+    public void GetGravityDirection_At0Degrees_ReturnsDown()
     {
-        // Arrange
-        var inv = new Inventory();
-        // Act
-        inv.Add("Sword", 1);
-        // Assert
-        AssertInt(inv.Count).IsEqual(1);
-        AssertObject(inv.LastItem).IsNotNull();
+        var direction = GravityHelper.GetGravityDirection(0f);
+        AssertFloat(direction.Y).IsEqual(-1f);
     }
 }
 ```
 
-**Pattern 2: Scene/Node Test (With Engine)**
+### Scene/Node Tests (Require Godot Runtime)
+
+For tests that instantiate Nodes or load scenes, add `[RequireGodotRuntime]`:
+
+```csharp
+[TestCase]
+[RequireGodotRuntime]
+public async Task Player_TakeDamage_ReducesHealth()
+{
+    var runner = ISceneRunner.Load("res://actors/Player.tscn");
+    await runner.AwaitIdleFrame();
+    // test code...
+}
+```
+
+#### GdUnit4 Scene Test Pattern
 ```csharp
 [TestSuite]
 public class PlayerTests
@@ -592,18 +581,22 @@ public class PlayerTests
     public void Setup() => _runner = ISceneRunner.Load("res://Scenes/Player.tscn");
 
     [TestCase]
-    [RequireGodotRuntime] // CRITICAL: Required for Node access
+    [RequireGodotRuntime]
     public async Task TakeDamage_ReducesHealth()
     {
         var player = _runner.GetProperty<Player>("Player");
-
-        await _runner.AwaitIdleFrame(); // Wait for ready
+        await _runner.AwaitIdleFrame();
         player.TakeDamage(10);
-
         AssertInt(player.Health).IsEqual(90);
     }
 }
 ```
+
+#### Anti-Patterns (Cause Hangs)
+- `await obj.ToSignal(obj, "ready")` after AddChild - ready fires synchronously, hangs forever
+- `while(true)` loops without break conditions
+- Async tests without `[RequireGodotRuntime]`
+- Testing Node-derived classes via `dotnet test` (use GdUnit4 runner instead)
 
 ### GDScript Testing (Editor Tools Only)
 gdUnit4 supports GDScript tests for editor tooling:
