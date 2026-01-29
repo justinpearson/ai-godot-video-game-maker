@@ -632,3 +632,136 @@ func test_with_auto_cleanup() -> void:
 | `assert_array(v)` | `.has_size(n)`, `.contains([items])`, `.is_empty()` |
 | `assert_object(v)` | `.is_null()`, `.is_not_null()`, `.is_instanceof(Type)` |
 | `assert_signal(obj)` | `await assert_signal(obj).is_emitted("signal_name")` |
+
+## DevTools (Runtime Feedback Loop)
+
+DevTools is an AutoLoad (`game/DevTools.cs`) that enables runtime introspection and validation while the game is running. Use it for iterative visual verification and debugging.
+
+### When to Use Which Tool
+
+| Task | Tool | Notes |
+|------|------|-------|
+| **Build C#** | `dotnet build -warnaserror` | Always first |
+| **Run tests** | `pwsh ./tools/test.ps1` | Unit + integration tests |
+| **Validate UIDs/NodePaths** | `pwsh ./tools/godot.ps1 --headless --script res://tools/lint_project.gd` | Build-time, no game running |
+| **Screenshot running game** | `python tools/devtools.py screenshot` | Requires game running |
+| **Runtime scene validation** | `python tools/devtools.py validate-all` | Checks textures, meshes, shaders |
+| **Check FPS/memory** | `python tools/devtools.py performance` | Requires game running |
+| **Inspect node state** | `python tools/devtools.py get-state --node "/root/..."` | Debug runtime values |
+| **Debug node hierarchy** | `python tools/devtools.py scene-tree` | Requires game running |
+
+### DevTools CLI Commands
+
+```powershell
+# Check if game is running with DevTools
+python tools/devtools.py ping
+
+# Take screenshot for visual verification
+python tools/devtools.py screenshot
+python tools/devtools.py screenshot --filename "after_fix.png"
+
+# Runtime scene validation (missing textures, meshes, shaders)
+python tools/devtools.py validate-all
+python tools/devtools.py validate --scene res://path/to/scene.tscn
+
+# Get scene tree (JSON output)
+python tools/devtools.py scene-tree --depth 5
+
+# Performance metrics
+python tools/devtools.py performance
+
+# Inspect node state
+python tools/devtools.py get-state --node "/root/Game/Player"
+
+# Modify node state at runtime
+python tools/devtools.py set-state --node "/root/Game/Player" --property Health --value 100
+
+# Call a method on a node
+python tools/devtools.py run-method --node "/root/Game/Player" --method TakeDamage --args "[25]"
+
+# View DevTools logs
+python tools/devtools.py logs --tail 20
+
+# Quit the game
+python tools/devtools.py quit
+```
+
+### Agentic Iteration Workflow
+
+For iterative development with visual feedback:
+
+```powershell
+# 1. Start the game (keep it running)
+pwsh ./tools/godot.ps1 &
+
+# 2. Verify DevTools is responding
+python tools/devtools.py ping
+
+# 3. Make code changes, then:
+dotnet build -warnaserror
+
+# 4. Take screenshot to verify visual state
+python tools/devtools.py screenshot
+
+# 5. Check performance if needed
+python tools/devtools.py performance
+
+# 6. When done, quit cleanly
+python tools/devtools.py quit
+```
+
+### Structured Logging
+
+Add structured logs from game code for debugging:
+
+```csharp
+using TeaLeaves.Systems;
+
+// In your game code:
+DevTools.Log("player", "Took damage", new {
+    amount = damage,
+    health = currentHealth,
+    source = damageSource.Name
+});
+```
+
+View logs:
+```powershell
+python tools/devtools.py logs --tail 20 --category player
+```
+
+### Validation Issue Codes (Runtime)
+
+| Code | Severity | Meaning |
+|------|----------|---------|
+| `file_not_found` | error | Scene file does not exist on disk |
+| `load_failed` | error | Failed to load PackedScene from file |
+| `invalid_state` | error | Scene loaded but has no valid state |
+| `instantiate_failed` | error | Exception during scene instantiation |
+| `missing_script` | error | Script file not found or failed to compile |
+| `missing_resource` | warning | Resource reference is null |
+| `missing_mesh` | warning | MeshInstance3D has no mesh |
+| `missing_texture` | warning | Sprite has no texture |
+| `missing_shader` | error | ShaderMaterial has no shader |
+| `missing_collision_shape` | warning | CollisionShape has no shape |
+| `missing_audio` | info | AudioStreamPlayer has no stream |
+| `invalid_connection` | error | Signal connection is broken |
+| `invalid_animation_path` | warning | Animation targets non-existent node |
+| `relative_nodepath` | info | NodePath uses relative path syntax |
+
+## Quick Reference: The Right Tool for Each Task
+
+| I want to... | Command |
+|--------------|---------|
+| Build C# | `dotnet build -warnaserror` |
+| Run all tests | `pwsh ./tools/test.ps1` |
+| Run C# unit tests only | `dotnet test` |
+| Validate scene UIDs | `pwsh ./tools/godot.ps1 --headless --script res://tools/lint_project.gd` |
+| Validate runtime assets | `python tools/devtools.py validate-all` (game must be running) |
+| Take a screenshot | `python tools/devtools.py screenshot` (game must be running) |
+| Check performance | `python tools/devtools.py performance` (game must be running) |
+| Lint GDScript | `gdlint path/to/file.gd` |
+| Lint shaders | `pwsh ./tools/godot.ps1 --headless --script res://tools/lint_shaders.gd` |
+| Lint test files | `pwsh ./tools/lint_tests.ps1` |
+| Run the game | `pwsh ./tools/godot.ps1` |
+| Setup input actions | `pwsh ./tools/godot.ps1 --headless --script res://tools/setup_input_actions_cli.gd` |
