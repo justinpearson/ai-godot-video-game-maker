@@ -255,6 +255,22 @@ public class EventBusTests
   parent.AddChild(obstacle);
   obstacle.GlobalPosition = pos;
   ```
+- **Nullable fields initialized in `_Ready()`** - Use `= null!` for fields set in `_Ready()` rather than the constructor. This avoids CS8618 warnings-as-errors while keeping `<Nullable>enable</Nullable>`:
+  ```csharp
+  // WRONG: CS8618 warning - non-nullable field not initialized in constructor
+  private Sprite3D _visual;
+  private AudioStreamPlayer _audio;
+
+  // CORRECT: null-forgiving operator tells compiler these are set before use
+  private Sprite3D _visual = null!;
+  private AudioStreamPlayer _audio = null!;
+
+  public override void _Ready()
+  {
+      _visual = GetNode<Sprite3D>("Visual");
+      _audio = GetNode<AudioStreamPlayer>("Audio");
+  }
+  ```
 
 ### Resource Patterns
 Custom Resource classes for data-driven configs:
@@ -601,11 +617,32 @@ public class PlayerTests
 }
 ```
 
+#### CRITICAL: Node-Derived Classes Crash `dotnet test`
+
+**Any C# class that inherits from `Node` (or any Godot type) will cause an `AccessViolationException`** when instantiated via `dotnet test`, because the Godot runtime is not running. This includes classes with static fields/constructors that reference Godot types.
+
+**Solution**: Keep testable logic in pure C# classes with zero Godot dependencies:
+
+```csharp
+// GOOD: Pure C# class - safe for dotnet test
+public static class ScoringHelper
+{
+    public static int CalculateScore(int hits, int multiplier) => hits * multiplier * 100;
+}
+
+// BAD: Inherits from Node - will crash dotnet test
+public partial class ScoreManager : Node
+{
+    public int CalculateScore(int hits, int multiplier) => hits * multiplier * 100;
+}
+```
+
+If you need to test code that uses Godot types, use the GdScript test runner (`pwsh ./tools/test.ps1`) with `[RequireGodotRuntime]` instead.
+
 #### Anti-Patterns (Cause Hangs)
 - `await obj.ToSignal(obj, "ready")` after AddChild - ready fires synchronously, hangs forever
 - `while(true)` loops without break conditions
 - Async tests without `[RequireGodotRuntime]`
-- Testing Node-derived classes via `dotnet test` (use GdUnit4 runner instead)
 
 ### GDScript Testing (Editor Tools Only)
 gdUnit4 supports GDScript tests for editor tooling:
