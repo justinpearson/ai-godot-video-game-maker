@@ -923,3 +923,6 @@ python tools/devtools.py logs --tail 20 --category player
 | Lint test files | `pwsh ./tools/lint_tests.ps1` |
 | Run the game | `pwsh ./tools/godot.ps1` |
 | Setup input actions | `pwsh ./tools/godot.ps1 --headless --script res://tools/setup_input_actions_cli.gd` |
+
+# Other
+- Use AGENT TEAMS where it makes sense. When initially creating a game, you must ALWAYS use an agent team.
