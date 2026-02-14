@@ -1,25 +1,23 @@
 {
   "hooks": {
-    "Stop": [
+    "UserPromptSubmit": [
       {
-        "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "powershell -c \"(New-Object Media.SoundPlayer (Join-Path $PWD 'chime.wav')).PlaySync()\"",
-            "timeout": 10
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/claude-status.ps1 -Status busy",
+            "timeout": 5
           }
         ]
       }
     ],
-    "Notification": [
+    "Stop": [
       {
-        "matcher": "permission_prompt",
         "hooks": [
           {
             "type": "command",
-            "command": "powershell -c \"(New-Object Media.SoundPlayer (Join-Path $PWD 'chime.wav')).PlaySync()\"",
-            "timeout": 10
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/claude-status.ps1 -Status idle",
+            "timeout": 5
           }
         ]
       }
