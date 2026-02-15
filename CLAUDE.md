@@ -482,6 +482,7 @@ Before committing:
 
 ## Important Notes
 
+- **Window Placement** - Handled by the `WindowSetup` AutoLoad (`game/WindowSetup.cs`), which runs before all other AutoLoads. It forces the window to the correct monitor and sets always-on-top. No per-scene code needed. See `docs/window-placement.md` for the API details.
 - **Physics Layers**: Interactables use layer 2, ground/navigation uses layer 1
 - **Platform**: Windows (D3D12 rendering)
 - **Godot Version**: Requires Godot 4.6+ Mono (set via `GODOT_VERSION` env var)
