@@ -8,6 +8,11 @@
 
 config_version=5
 
+[display]
+
+window/size/initial_screen=2
+window/size/always_on_top=true
+
 [application]
 
 config/name="TeaLeaves"
