@@ -129,6 +129,11 @@ This repo currently ships the platform and verification infrastructure, not a fu
 
 In short: `tea-leaves` is the repeatable build-and-validate loop that dog-generated game ideas plug into.
 
+## Related Projects
+
+- **[Quasar Saz](https://github.com/cleak/quasar-saz)** - The finished game built on this foundation, designed by a dog and developed by Claude Code ([watch the video](https://youtu.be/8BbPlPou3Bg))
+- **[DogKeyboard](https://github.com/cleak/DogKeyboard)** - All the routing and miscellaneous tasks for reading input from Momo, dispensing treats, and playing chimes for her
+
 ## License
 
 MIT. See `LICENSE`.
