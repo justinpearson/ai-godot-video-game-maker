@@ -1,23 +1,52 @@
-# Tea Leaves
+# AI Godot Video Game Maker
 
-Tea Leaves is the engineering substrate for dog-designed Godot games: non-semantic keyboard streams are interpreted as design input, and this repo provides the runtime tooling and verification rails that turn those streams into working game builds.
+A framework for rapidly building Godot video games with Claude Code. You describe the game you want, and Claude Code designs, implements, play-tests, and iterates on it using this repo's automated verification pipeline.
 
-[Quasar Saz](https://github.com/cleak/quasar-saz) is one finished game and `tea-leaves` is the reusable technical core behind that workflow.
+Forked from [tea-leaves](https://github.com/cleak/tea-leaves), the engineering substrate behind [Quasar Saz](https://github.com/cleak/quasar-saz) (a game designed by a dog and built by Claude Code). This fork replaces the dog-keyboard input with coherent game descriptions and ports everything from Windows to macOS.
 
-## Generation Loop
+## How It Works
 
-1. Dog keyboard input is treated as intentional design signal, not noise.
-2. An agent translates that signal into concrete Godot changes (code, scenes, resources, controls).
-3. This repository's automation stack validates the result (build/test/lint/runtime checks) before changes are accepted.
+1. You provide a coherent description of the video game you want to build.
+2. Claude Code interprets the description and generates Godot code (C# gameplay, scenes, resources, sounds).
+3. The automation stack validates the result: build, test, lint, runtime checks, and screenshots.
+4. You iterate by providing follow-up descriptions to refine or extend the game.
+
+## Prerequisites
+
+- **macOS** (this fork targets macOS; the original targets Windows)
+- **Godot 4.6+ Mono** installed to `/Applications/Godot_mono.app` or set `GODOT4_MONO_EXE`
+- **.NET 8.0 SDK**
+- **Python 3** (for runtime DevTools CLI)
+
+## Quick Start
+
+```bash
+# 1. Clone and enter the repo
+git clone <this-repo-url>
+cd ai-godot-video-game-maker
+
+# 2. Restore dependencies and build
+dotnet restore
+dotnet build -warnaserror
+
+# 3. Initialize input actions
+./tools/godot.sh --headless --script res://tools/setup_input_actions_cli.gd
+
+# 4. Run tests
+dotnet test
+./tools/test.sh
+
+# 5. Launch Claude Code and describe your game!
+```
 
 ## Technical Snapshot
 
 - Engine: Godot 4.6 Mono
 - Gameplay language: C# (`net8.0`)
-- Tooling language: GDScript + PowerShell + Python
+- Tooling language: GDScript + Bash + Python
 - Physics: Jolt
-- Renderer: Forward Plus (D3D12 on Windows)
-- Test stack: `dotnet test` + gdUnit4 via `pwsh ./tools/test.ps1`
+- Renderer: Forward Plus (Vulkan on macOS)
+- Test stack: `dotnet test` + gdUnit4 via `./tools/test.sh`
 
 ## Runtime Architecture
 
@@ -25,7 +54,7 @@ Tea Leaves is the engineering substrate for dog-designed Godot games: non-semant
 
 `project.godot` wires two autoloads:
 
-- `WindowSetup` (`game/WindowSetup.cs`): forces startup window placement on monitor index `2`, centers using `ScreenGetUsableRect`, and sets always-on-top. Change this as desired - it was a kludge to make good recordings.
+- `WindowSetup` (`game/WindowSetup.cs`): centers the window on the primary monitor at startup.
 - `DevTools` (`game/DevTools.cs`): runtime command server used by local automation.
 
 ### DevTools File Protocol
@@ -48,8 +77,6 @@ Implemented command families:
 - Input simulation: `input_press`, `input_release`, `input_tap`, `input_clear`, `input_actions`, `input_sequence`
 - Runtime ops: `performance`, `ping`, `quit`
 
-`input_sequence` supports asynchronous multi-step scripts with `press`, `release`, `tap`, `hold`, `wait`, `screenshot`, `assert`, and `clear`.
-
 ### Runtime Scene Validation
 
 `SceneValidator` (`game/SceneValidator.cs`) validates scenes in two phases:
@@ -57,16 +84,16 @@ Implemented command families:
 1. Static `SceneState` scan for missing scripts/resources, invalid signal connection metadata, and relative `NodePath` usage hints.
 2. Instantiation scan for missing meshes, textures, shaders, collision shapes, audio streams, and invalid `AnimationPlayer` track targets.
 
-This complements headless lint by catching runtime-only failures.
-
 ## Toolchain and Verification
 
 ### Godot Launcher Wrapper
 
-`tools/godot.ps1` resolves Godot from:
+`tools/godot.sh` resolves Godot from:
 
-1. `GODOT4_MONO_EXE`
-2. `C:\Projects\Godot\Godot_v4.6-stable_mono_win64\...`
+1. `GODOT4_MONO_EXE` environment variable
+2. `/Applications/Godot_mono.app/Contents/MacOS/Godot`
+3. `~/Applications/Godot_mono.app/Contents/MacOS/Godot`
+4. `godot` on PATH (e.g. via Homebrew)
 
 ### Project Lint
 
@@ -77,15 +104,11 @@ This complements headless lint by catching runtime-only failures.
 - Optional JSON output (`--json`)
 - Modes: `--uids-only`, `--warnings-only`, `--fail-on-warn`
 
-### Shader Lint
-
-`tools/lint_shaders.gd` compiles each shader in a minimal render harness and verifies compilation by checking a synthetic uniform.
-
 ### Tests and Test Lint
 
 - `dotnet test`: C# tests
-- `pwsh ./tools/test.ps1`: gdUnit4 runtime tests with timeout handling and normalized exit codes
-- `pwsh ./tools/lint_tests.ps1`: gdUnit conventions (`extends GdUnitTestSuite`, `test_` naming, assertion presence, loop sanity)
+- `./tools/test.sh`: gdUnit4 runtime tests with timeout handling and normalized exit codes
+- `./tools/lint_tests.sh`: gdUnit conventions (`extends GdUnitTestSuite`, `test_` naming, assertion presence, loop sanity)
 
 ### Input Bootstrap
 
@@ -95,43 +118,44 @@ This complements headless lint by catching runtime-only failures.
 
 ## CLI Workflow
 
-```powershell
+```bash
 # Restore/build/test
 dotnet restore
 dotnet build -warnaserror
 dotnet test
-pwsh ./tools/test.ps1
-pwsh ./tools/godot.ps1 --headless --script res://tools/setup_input_actions_cli.gd
+./tools/test.sh
+./tools/godot.sh --headless --script res://tools/setup_input_actions_cli.gd
 
 # Static project lint
-pwsh ./tools/godot.ps1 --headless --script res://tools/lint_project.gd
+./tools/godot.sh --headless --script res://tools/lint_project.gd
 
 # Run game + runtime verification loop
-pwsh ./tools/godot.ps1
-python tools/devtools.py ping
-python tools/devtools.py input list
-python tools/devtools.py input sequence test/sequences/example_template.json
-python tools/devtools.py screenshot --filename "verification.png"
-python tools/devtools.py validate-all
-python tools/devtools.py performance
-python tools/devtools.py input clear
+./tools/godot.sh &
+python3 tools/devtools.py ping
+python3 tools/devtools.py input list
+python3 tools/devtools.py input sequence test/sequences/example_template.json
+python3 tools/devtools.py screenshot --filename "verification.png"
+python3 tools/devtools.py validate-all
+python3 tools/devtools.py performance
+python3 tools/devtools.py input clear
 ```
 
 Screenshots are written to:
-`%APPDATA%/Godot/app_userdata/TeaLeaves/screenshots/`
+`~/Library/Application Support/Godot/app_userdata/TeaLeaves/screenshots/`
 
 ## Repository Status
 
-This repo currently ships the platform and verification infrastructure, not a full game content stack yet:
+This repo ships the platform and verification infrastructure, not a full game content stack:
 
 - `actors/`, `levels/`, `scripts/`, `ui/`, `data/`, `util/` are scaffolded directories.
 - `test/unit/test_example.gd` and `test/sequences/example_template.json` are starter references.
 
-In short: `tea-leaves` is the repeatable build-and-validate loop that dog-generated game ideas plug into.
+The idea: you describe a game, Claude Code builds it within this framework.
 
-## Related Projects
+## Upstream / Related Projects
 
-- **[Quasar Saz](https://github.com/cleak/quasar-saz)** - The finished game built on this foundation, designed by a dog and developed by Claude Code ([watch the video](https://youtu.be/8BbPlPou3Bg))
+- **[tea-leaves](https://github.com/cleak/tea-leaves)** - The original repo (Windows, dog-keyboard input)
+- **[Quasar Saz](https://github.com/cleak/quasar-saz)** - A finished game built on the original foundation, designed by a dog and developed by Claude Code ([watch the video](https://youtu.be/8BbPlPou3Bg))
 - **[DogKeyboard](https://github.com/cleak/DogKeyboard)** - All the routing and miscellaneous tasks for reading input from Momo, dispensing treats, and playing chimes for her
 
 ## License

@@ -10,8 +10,8 @@ config_version=5
 
 [display]
 
-window/size/initial_screen=2
-window/size/always_on_top=true
+window/size/viewport_width=1920
+window/size/viewport_height=1080
 
 [application]
 
@@ -38,4 +38,4 @@ enabled=PackedStringArray("res://addons/gdUnit4/plugin.cfg")
 
 [rendering]
 
-rendering_device/driver.windows="d3d12"
+rendering_device/driver.macos="vulkan"
