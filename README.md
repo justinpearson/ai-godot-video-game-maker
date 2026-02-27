@@ -1,162 +1,218 @@
 # AI Godot Video Game Maker
 
-A framework for rapidly building Godot video games with Claude Code. You describe the game you want, and Claude Code designs, implements, play-tests, and iterates on it using this repo's automated verification pipeline.
+Describe the video game you want. Claude Code builds it in Godot.
 
-Forked from [tea-leaves](https://github.com/cleak/tea-leaves), the engineering substrate behind [Quasar Saz](https://github.com/cleak/quasar-saz) (a game designed by a dog and built by Claude Code). This fork replaces the dog-keyboard input with coherent game descriptions and ports everything from Windows to macOS.
+You provide a game description, Claude Code interprets it and generates C# gameplay code, scenes, resources, and sounds inside this Godot project. Then you iterate — refine mechanics, add features, fix bugs — all through conversation.
 
-## How It Works
+Forked from [tea-leaves](https://github.com/cleak/tea-leaves), the engineering substrate behind [Quasar Saz](https://github.com/cleak/quasar-saz) (a game designed by a dog and built by Claude Code).
 
-1. You provide a coherent description of the video game you want to build.
-2. Claude Code interprets the description and generates Godot code (C# gameplay, scenes, resources, sounds).
-3. The automation stack validates the result: build, test, lint, runtime checks, and screenshots.
-4. You iterate by providing follow-up descriptions to refine or extend the game.
+---
 
-## Prerequisites
+## One-Time Setup
 
-- **macOS** (this fork targets macOS; the original targets Windows)
-- **Godot 4.6+ Mono** installed to `/Applications/Godot_mono.app` or set `GODOT4_MONO_EXE`
-- **.NET 8.0 SDK**
-- **Python 3** (for runtime DevTools CLI)
+Complete these steps once on a fresh clone. Every step must succeed before moving on.
 
-## Quick Start
+### 1. Install prerequisites
+
+You need three things installed on your Mac:
+
+| Prerequisite | How to get it |
+|---|---|
+| **Godot 4.6+ Mono** | Download from [godotengine.org](https://godotengine.org/download/macos/). Install to `/Applications/Godot_mono.app`. |
+| **.NET 8.0 SDK** | Download from [dotnet.microsoft.com](https://dotnet.microsoft.com/download/dotnet/8.0), or `brew install dotnet@8`. |
+| **Python 3** | Comes with macOS. Verify with `python3 --version`. |
+
+Verify they're accessible:
 
 ```bash
-# 1. Clone and enter the repo
-git clone <this-repo-url>
+dotnet --version          # Should print 8.x.x
+./tools/godot.sh --version   # Should print Godot Engine v4.6.x.stable.mono
+python3 --version         # Should print Python 3.x.x
+```
+
+> **Tip:** If `./tools/godot.sh` can't find Godot, either move it to `/Applications/Godot_mono.app` or set the environment variable:
+> ```bash
+> export GODOT4_MONO_EXE="/path/to/your/Godot"
+> ```
+
+### 2. Clone the repo
+
+```bash
+git clone https://github.com/justinpearson/ai-godot-video-game-maker.git
 cd ai-godot-video-game-maker
-
-# 2. Restore dependencies and build
-dotnet restore
-dotnet build -warnaserror
-
-# 3. Initialize input actions
-./tools/godot.sh --headless --script res://tools/setup_input_actions_cli.gd
-
-# 4. Run tests
-dotnet test
-./tools/test.sh
-
-# 5. Launch Claude Code and describe your game!
 ```
 
-## Technical Snapshot
-
-- Engine: Godot 4.6 Mono
-- Gameplay language: C# (`net8.0`)
-- Tooling language: GDScript + Bash + Python
-- Physics: Jolt
-- Renderer: Forward Plus (Vulkan on macOS)
-- Test stack: `dotnet test` + gdUnit4 via `./tools/test.sh`
-
-## Runtime Architecture
-
-### Boot Autoloads
-
-`project.godot` wires two autoloads:
-
-- `WindowSetup` (`game/WindowSetup.cs`): centers the window on the primary monitor at startup.
-- `DevTools` (`game/DevTools.cs`): runtime command server used by local automation.
-
-### DevTools File Protocol
-
-`DevTools` uses a file-based transport under `user://`:
-
-- Command inbox: `devtools_commands.json`
-- Result outbox: `devtools_results.json`
-- Structured log stream: `devtools_log.jsonl`
-
-The autoload polls every ~100 ms, dispatches commands, and writes structured JSON responses for CLI clients.
-
-### Runtime Command Surface
-
-Implemented command families:
-
-- Visual: `screenshot`, `scene_tree`
-- Validation: `validate_scene`, `validate_all_scenes`
-- Introspection/mutation: `get_state`, `set_state`, `run_method`
-- Input simulation: `input_press`, `input_release`, `input_tap`, `input_clear`, `input_actions`, `input_sequence`
-- Runtime ops: `performance`, `ping`, `quit`
-
-### Runtime Scene Validation
-
-`SceneValidator` (`game/SceneValidator.cs`) validates scenes in two phases:
-
-1. Static `SceneState` scan for missing scripts/resources, invalid signal connection metadata, and relative `NodePath` usage hints.
-2. Instantiation scan for missing meshes, textures, shaders, collision shapes, audio streams, and invalid `AnimationPlayer` track targets.
-
-## Toolchain and Verification
-
-### Godot Launcher Wrapper
-
-`tools/godot.sh` resolves Godot from:
-
-1. `GODOT4_MONO_EXE` environment variable
-2. `/Applications/Godot_mono.app/Contents/MacOS/Godot`
-3. `~/Applications/Godot_mono.app/Contents/MacOS/Godot`
-4. `godot` on PATH (e.g. via Homebrew)
-
-### Project Lint
-
-`tools/lint_project.gd` performs:
-
-- UID consistency checks for `ext_resource` entries in `.tscn/.tres`
-- Scene-level NodePath resolution warnings using `SceneState`
-- Optional JSON output (`--json`)
-- Modes: `--uids-only`, `--warnings-only`, `--fail-on-warn`
-
-### Tests and Test Lint
-
-- `dotnet test`: C# tests
-- `./tools/test.sh`: gdUnit4 runtime tests with timeout handling and normalized exit codes
-- `./tools/lint_tests.sh`: gdUnit conventions (`extends GdUnitTestSuite`, `test_` naming, assertion presence, loop sanity)
-
-### Input Bootstrap
-
-`tools/setup_input_actions_cli.gd` seeds and persists default actions:
-
-`move_forward`, `move_backward`, `move_left`, `move_right`, `jump`, `crouch`, `sprint`, `swim_up`, `swim_down`
-
-## CLI Workflow
+### 3. Restore NuGet packages
 
 ```bash
-# Restore/build/test
 dotnet restore
-dotnet build -warnaserror
-dotnet test
-./tools/test.sh
-./tools/godot.sh --headless --script res://tools/setup_input_actions_cli.gd
-
-# Static project lint
-./tools/godot.sh --headless --script res://tools/lint_project.gd
-
-# Run game + runtime verification loop
-./tools/godot.sh &
-python3 tools/devtools.py ping
-python3 tools/devtools.py input list
-python3 tools/devtools.py input sequence test/sequences/example_template.json
-python3 tools/devtools.py screenshot --filename "verification.png"
-python3 tools/devtools.py validate-all
-python3 tools/devtools.py performance
-python3 tools/devtools.py input clear
 ```
 
-Screenshots are written to:
-`~/Library/Application Support/Godot/app_userdata/TeaLeaves/screenshots/`
+This downloads the C# dependencies (Godot SDK bindings, gdUnit4 test framework, etc.).
 
-## Repository Status
+### 4. Build the C# code
 
-This repo ships the platform and verification infrastructure, not a full game content stack:
+```bash
+dotnet build -warnaserror
+```
 
-- `actors/`, `levels/`, `scripts/`, `ui/`, `data/`, `util/` are scaffolded directories.
-- `test/unit/test_example.gd` and `test/sequences/example_template.json` are starter references.
+This compiles all C# gameplay code. It must exit with no errors and no warnings.
 
-The idea: you describe a game, Claude Code builds it within this framework.
+### 5. Initialize input actions
+
+```bash
+./tools/godot.sh --headless --script res://tools/setup_input_actions_cli.gd
+```
+
+This registers the default input actions (WASD movement, jump, crouch, sprint, etc.) into `project.godot`.
+
+### 6. Run the tests
+
+```bash
+dotnet test
+./tools/test.sh
+```
+
+- `dotnet test` runs pure C# unit tests.
+- `./tools/test.sh` runs gdUnit4 tests inside the Godot runtime (GDScript + C# integration tests).
+
+Both must pass. If `./tools/test.sh` times out (exit code 124), retry with a longer timeout: `./tools/test.sh --timeout 120`.
+
+### 7. Verify the project lint passes
+
+```bash
+./tools/godot.sh --headless --script res://tools/lint_project.gd
+```
+
+This checks UID consistency and scene integrity.
+
+**Setup is done.** If every step above succeeded, you're ready to make games.
+
+---
+
+## Making a Game
+
+### 1. Start Claude Code
+
+Open a terminal in the repo directory and launch Claude Code:
+
+```bash
+claude
+```
+
+### 2. Describe your game
+
+Type a description of the video game you want. Be as specific or as vague as you like — Claude Code will fill in the gaps creatively. For example:
+
+> *"Make a 2D platformer where a cat collects fish while avoiding seagulls. The cat can double-jump and wall-slide. Pixel art style, beach theme, with upbeat music."*
+
+Or something simpler:
+
+> *"Make a simple top-down space shooter with waves of enemies."*
+
+Claude Code will design the game, write C# code, create scenes, download or generate assets, and build everything inside this project.
+
+### 3. Watch it build
+
+Claude Code will automatically:
+- Write C# gameplay code in `scripts/`, `actors/`, `levels/`, `ui/`
+- Create Godot scenes (`.tscn`) and resources (`.tres`)
+- Build the project (`dotnet build -warnaserror`)
+- Run tests (`dotnet test`, `./tools/test.sh`)
+- Lint the project for correctness
+- Launch the game and take screenshots to verify it looks right
+
+### 4. Play your game
+
+Once Claude Code finishes, launch the game:
+
+```bash
+./tools/godot.sh
+```
+
+Or Claude Code may launch it for you during the build process.
+
+### 5. Iterate
+
+Each new message you send is treated as an update to the existing game. Ask for anything:
+
+- *"Make the enemies faster and add a boss at wave 5"*
+- *"The jump feels too floaty, tighten it up"*
+- *"Add a main menu with a start button and high score display"*
+- *"There's a bug where the player falls through the floor"*
+
+Claude Code will modify the existing game — it won't start from scratch unless you explicitly ask.
+
+---
+
+## Technical Details
+
+### Stack
+
+| Component | Technology |
+|---|---|
+| Engine | Godot 4.6 Mono |
+| Gameplay code | C# (net8.0) |
+| Tooling | GDScript + Bash + Python |
+| Physics | Jolt |
+| Renderer | Forward Plus (Vulkan) |
+| Tests | `dotnet test` + gdUnit4 via `./tools/test.sh` |
+
+### Project structure
+
+```
+res://
+  scripts/         # C# gameplay code
+  actors/          # Player and NPC scenes
+  levels/          # Level scenes
+  ui/              # HUD and menus
+  util/            # Camera rigs, markers, utilities
+  game/            # AutoLoads (WindowSetup, DevTools, EventBus)
+  data/            # Resource definitions
+  test/            # gdUnit4 test suites
+  tools/           # Build/lint/setup scripts (not shipped)
+  addons/          # Third-party addons (gdUnit4)
+```
+
+### AutoLoads
+
+Registered in `project.godot`:
+- **WindowSetup** (`game/WindowSetup.cs`) — Centers the window on the primary monitor at startup.
+- **DevTools** (`game/DevTools.cs`) — Runtime command server for automated verification (screenshots, input simulation, validation).
+
+### Key commands reference
+
+```bash
+# Build
+dotnet restore           # Restore NuGet packages
+dotnet build -warnaserror  # Compile C# (must pass clean)
+
+# Test
+dotnet test              # C# unit tests
+./tools/test.sh          # gdUnit4 runtime tests
+
+# Lint
+./tools/godot.sh --headless --script res://tools/lint_project.gd   # UIDs + scenes
+./tools/godot.sh --headless --script res://tools/lint_shaders.gd   # Shaders
+./tools/lint_tests.sh     # Test file conventions
+gdlint path/to/file.gd   # GDScript style
+
+# Run
+./tools/godot.sh          # Launch the game
+
+# DevTools (game must be running)
+python3 tools/devtools.py ping
+python3 tools/devtools.py screenshot
+python3 tools/devtools.py validate-all
+python3 tools/devtools.py input tap jump
+python3 tools/devtools.py quit
+```
 
 ## Upstream / Related Projects
 
-- **[tea-leaves](https://github.com/cleak/tea-leaves)** - The original repo (Windows, dog-keyboard input)
-- **[Quasar Saz](https://github.com/cleak/quasar-saz)** - A finished game built on the original foundation, designed by a dog and developed by Claude Code ([watch the video](https://youtu.be/8BbPlPou3Bg))
-- **[DogKeyboard](https://github.com/cleak/DogKeyboard)** - All the routing and miscellaneous tasks for reading input from Momo, dispensing treats, and playing chimes for her
+- **[tea-leaves](https://github.com/cleak/tea-leaves)** — The original repo (Windows, dog-keyboard input)
+- **[Quasar Saz](https://github.com/cleak/quasar-saz)** — A finished game built on the original foundation, designed by a dog and developed by Claude Code ([watch the video](https://youtu.be/8BbPlPou3Bg))
+- **[DogKeyboard](https://github.com/cleak/DogKeyboard)** — All the routing and miscellaneous tasks for reading input from Momo, dispensing treats, and playing chimes for her
 
 ## License
 
