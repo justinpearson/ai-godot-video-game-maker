@@ -13,27 +13,24 @@ Force window placement via `DisplayServer` API in `_Ready()`. This runs after th
 ```csharp
 public override void _Ready()
 {
-    int targetScreen = 2; // 0-indexed: 0 = primary, 1 = second, 2 = third
+    int targetScreen = 0; // 0-indexed: 0 = primary, 1 = second, 2 = third
     if (targetScreen < DisplayServer.GetScreenCount())
     {
         // Move window to the target monitor
         DisplayServer.WindowSetCurrentScreen(targetScreen);
 
-        // Center within usable area (excludes taskbar)
+        // Center within usable area (excludes menu bar and dock on macOS)
         var usable = DisplayServer.ScreenGetUsableRect(targetScreen);
         var winSize = DisplayServer.WindowGetSize();
         var pos = usable.Position + (usable.Size - winSize) / 2;
         DisplayServer.WindowSetPosition(pos);
     }
-
-    // Optional: keep window above other apps
-    DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.AlwaysOnTop, true);
 }
 ```
 
 ### Why `ScreenGetUsableRect`
 
-`ScreenGetUsableRect` returns the monitor area minus OS chrome (taskbar, dock). Using this instead of `ScreenGetSize` prevents the window from extending behind the taskbar.
+`ScreenGetUsableRect` returns the monitor area minus OS chrome (menu bar and dock on macOS). Using this instead of `ScreenGetSize` prevents the window from extending behind the dock.
 
 ### Key API Reference
 
@@ -41,7 +38,7 @@ public override void _Ready()
 |--------|---------|
 | `DisplayServer.GetScreenCount()` | Number of connected monitors |
 | `DisplayServer.WindowSetCurrentScreen(idx)` | Move window to monitor |
-| `DisplayServer.ScreenGetUsableRect(idx)` | Monitor area excluding taskbar |
+| `DisplayServer.ScreenGetUsableRect(idx)` | Monitor area excluding menu bar/dock |
 | `DisplayServer.WindowGetSize()` | Current window dimensions |
 | `DisplayServer.WindowSetPosition(pos)` | Set window top-left position |
 | `DisplayServer.WindowSetFlag(flag, val)` | Set window flags (always-on-top, etc.) |
@@ -54,8 +51,6 @@ These still live in `project.godot` under `[display]` but are not sufficient on 
 [display]
 window/size/viewport_width=1920
 window/size/viewport_height=1080
-window/size/initial_screen=2
-window/size/always_on_top=true
 ```
 
-The `initial_screen` setting may work on some systems but the `DisplayServer` code path above is the reliable approach.
+The `DisplayServer` code path in `WindowSetup.cs` is the reliable approach for positioning.
