@@ -6,8 +6,8 @@ using Godot;
 /// </summary>
 public partial class WindowSetup : Node
 {
-    /// <summary>Target monitor index (0-based). 2 = third monitor.</summary>
-    private const int TargetScreen = 2;
+    /// <summary>Target monitor index (0-based). 0 = primary monitor.</summary>
+    private const int TargetScreen = 0;
 
     public override void _Ready()
     {
@@ -18,7 +18,5 @@ public partial class WindowSetup : Node
             var winSize = DisplayServer.WindowGetSize();
             DisplayServer.WindowSetPosition(usable.Position + (usable.Size - winSize) / 2);
         }
-
-        DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.AlwaysOnTop, true);
     }
 }
