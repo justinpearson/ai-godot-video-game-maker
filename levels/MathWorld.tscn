@@ -1,0 +1,19 @@
+[gd_scene load_steps=5 format=3 uid="uid://mathworld001"]
+
+[ext_resource type="Script" path="res://scripts/MathWorld.cs" id="1_world"]
+[ext_resource type="PackedScene" uid="uid://player001" path="res://actors/Player.tscn" id="2_player"]
+[ext_resource type="PackedScene" uid="uid://hud001" path="res://ui/HUD.tscn" id="3_hud"]
+[ext_resource type="PackedScene" uid="uid://numpickup001" path="res://actors/NumberPickup.tscn" id="4_pickup"]
+
+[node name="MathWorld" type="Node2D"]
+script = ExtResource("1_world")
+NumberPickupScene = ExtResource("4_pickup")
+
+[node name="Camera2D" type="Camera2D" parent="."]
+zoom = Vector2(1.5, 1.5)
+
+[node name="Player" parent="." instance=ExtResource("2_player")]
+
+[node name="Numbers" type="Node2D" parent="."]
+
+[node name="HUD" parent="." instance=ExtResource("3_hud")]
