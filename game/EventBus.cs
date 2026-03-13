@@ -12,9 +12,9 @@ namespace TeaLeaves.Systems
         }
 
         // NumberTouched — player touched a number pickup
-        public delegate void NumberTouchedHandler(int value);
+        public delegate void NumberTouchedHandler(int value, Node2D pickup);
         public event NumberTouchedHandler? NumberTouched;
-        public void EmitNumberTouched(int value) { NumberTouched?.Invoke(value); }
+        public void EmitNumberTouched(int value, Node2D pickup) { NumberTouched?.Invoke(value, pickup); }
 
         // CorrectAnswer — correct answer chosen
         public delegate void CorrectAnswerHandler(int newScore);

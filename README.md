@@ -208,6 +208,187 @@ python3 tools/devtools.py input tap jump
 python3 tools/devtools.py quit
 ```
 
+## Distributing Your Game
+
+Once your game is working, you can package it as a standalone macOS app that anyone can run — no Godot, no .NET, no dev tools required.
+
+### Prerequisites (one-time)
+
+Install the Godot .NET export templates. These must match your exact Godot version:
+
+```bash
+# Check your Godot version
+./tools/godot.sh --version   # e.g. 4.6.stable.mono.official.89cea1439
+
+# Download the .NET export templates from GitHub (requires gh CLI)
+gh release download 4.6-stable --repo godotengine/godot-builds \
+  --pattern "Godot_v4.6-stable_mono_export_templates.tpz" --dir /tmp/
+
+# Extract and install
+cd /tmp && unzip -o Godot_v4.6-stable_mono_export_templates.tpz -d godot_templates_tmp
+mkdir -p ~/Library/Application\ Support/Godot/export_templates/4.6.stable.mono
+cp /tmp/godot_templates_tmp/templates/* \
+  "$HOME/Library/Application Support/Godot/export_templates/4.6.stable.mono/"
+```
+
+> **Note:** Replace `4.6-stable` and `4.6.stable.mono` with your actual version if different.
+
+### Enable texture compression
+
+Add this to `project.godot` under the `[rendering]` section (required for arm64 export):
+
+```ini
+[rendering]
+textures/vram_compression/import_etc2_astc=true
+```
+
+### Create an export preset
+
+Create `export_presets.cfg` in the project root:
+
+```ini
+[preset.0]
+
+name="macOS"
+platform="macOS"
+runnable=true
+dedicated_server=false
+custom_features=""
+export_filter="all_resources"
+include_filter=""
+exclude_filter="addons/gdUnit4/*, test/*, tools/*, TO_SORT/*, *.disabled, *.md"
+export_path="build/MathAdventure.app"
+encrypt_pck=false
+encrypt_directory=false
+script_export_mode=2
+
+[preset.0.options]
+
+application/display_name="My Game"
+application/bundle_identifier="com.example.mygame"
+application/app_category="Games"
+application/short_version="1.0.0"
+application/version="1.0.0"
+application/copyright="2026"
+application/min_macos_version="10.12"
+display/high_res=true
+codesign/codesign=0
+notarization/notarization=0
+dotnet/export_mode=1
+```
+
+Key settings:
+- **`exclude_filter`** — keeps test frameworks, dev tools, and working files out of the shipped app.
+- **`dotnet/export_mode=1`** — self-contained build. Bundles the .NET runtime so players don't need to install anything.
+- **`codesign/codesign=0`** — no code signing. Players will need to right-click > Open the first time (Gatekeeper bypass). Set to `1` and provide an identity if you have an Apple Developer account ($99/yr).
+
+### Export the app
+
+```bash
+mkdir -p build
+./tools/godot.sh --headless --export-release "macOS" build/MyGame.app
+```
+
+### Create a DMG for sharing
+
+```bash
+hdiutil create -volname "My Game" -srcfolder build/MyGame.app \
+  -ov build/MyGame.dmg -format UDZO
+```
+
+This compresses the ~450MB `.app` down to ~185MB. Recipients double-click the DMG and drag the app to run it.
+
+### Other distribution options
+
+| Platform | Notes |
+|---|---|
+| **itch.io** | Free, no approval process. Upload the DMG or zip. Great for sharing indie games. Create an account at [itch.io](https://itch.io) and use their web uploader or [butler CLI](https://itch.io/docs/butler/). |
+| **Steam** | $100 one-time fee per game. Wider audience but requires Steamworks integration. |
+| **Direct sharing** | Zip the `.app` or share the `.dmg` via any file-sharing service. |
+
+> **Gatekeeper note:** Unsigned apps trigger macOS Gatekeeper. Tell your players: *right-click the app > Open > Open* on first launch. To eliminate this, sign and notarize with an Apple Developer account.
+
+---
+
+## What AI Can Do vs. What Humans Must Do
+
+One of the goals of this project is to figure out how much of game development Claude Code can handle autonomously. Here's what we've found:
+
+### Claude Code can do (autonomously, no human intervention)
+
+- **Install prerequisites** — `brew install dotnet@8 coreutils`, download Godot, configure PATH
+- **Write all gameplay code** — C# scripts, scenes, resources, from a natural-language description
+- **Generate sound effects** — Python scripts that synthesize WAV files with `struct` and `wave`
+- **Build, test, and lint** — runs the full `dotnet build` / `dotnet test` / lint pipeline and fixes errors
+- **Launch the game and take screenshots** — uses DevTools to verify the game looks correct
+- **Import assets** — runs `--headless --import` for audio files, textures, etc.
+- **Set up export templates** — downloads, extracts, and installs them
+- **Export the game** — creates the `.app` bundle and DMG
+- **Git operations** — branching, committing, pushing, creating PRs
+- **Debug and iterate** — reads error output, adjusts code, re-runs until things work
+
+### Humans must do
+
+- **Provide the game idea** — Claude Code is creative but needs a starting direction
+- **Playtest and give feedback** — "the jump feels floaty", "make enemies faster", "I like this, now add X"
+- **Approve tool executions** — Claude Code asks permission before running commands (unless you skip permissions)
+- **Supply external assets** — if you have specific audio files, images, or art you want to use
+- **Apple Developer signing/notarization** — requires a paid account and human identity verification
+- **Upload to distribution platforms** — itch.io, Steam, etc. require human accounts and agreements
+- **Judge "fun"** — Claude Code can build mechanically correct games, but whether they're *fun* is a human call
+
+### The sweet spot
+
+The most productive workflow is: **human provides creative direction, Claude Code does all the building.** A single sentence like *"make the wrong answers pop like popcorn with a sound effect"* translates into multi-file code changes, asset management, and testing — all done autonomously. The human stays in the creative director seat.
+
+---
+
+## Making Multiple Games
+
+This repo is a **framework for making games**, not a single game. Each game lives on its own branch.
+
+### Starting a new game
+
+```bash
+# Start from the clean framework branch (master)
+git checkout master
+git checkout -b claude/my-new-game
+
+# Launch Claude Code and describe your game
+claude
+```
+
+> *"Make a 2D tower defense game where you place turrets to stop waves of bugs from reaching your garden."*
+
+Claude Code will create all the game-specific files (scripts, scenes, assets) on this branch, leaving the framework intact.
+
+### Branch strategy
+
+| Branch | Purpose |
+|---|---|
+| `master` | Clean framework — setup tools, CLAUDE.md, README, project skeleton. No game-specific code. |
+| `claude/math-adventure-game` | The Math Adventure children's addition game |
+| `claude/my-next-game` | Your next game idea |
+
+Each game branch diverges from `master` and contains that game's scripts, scenes, and assets. Framework improvements (new tools, better CLAUDE.md instructions, README updates) go to `master` and can be merged into game branches.
+
+### What lives on master vs. game branches
+
+**Master (framework):**
+- `project.godot` (base config, no game-specific scenes)
+- `CLAUDE.md`, `README.md`
+- `tools/`, `addons/`, `game/` (AutoLoads, DevTools)
+- Export preset templates
+- Test infrastructure
+
+**Game branches (everything else):**
+- `scripts/` — gameplay code
+- `actors/`, `levels/`, `ui/` — game scenes
+- `assets/` — sounds, images, music
+- Game-specific modifications to `project.godot` (main scene, input actions)
+
+---
+
 ## Upstream / Related Projects
 
 - **[tea-leaves](https://github.com/cleak/tea-leaves)** — The original repo (Windows, dog-keyboard input)

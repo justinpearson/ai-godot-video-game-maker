@@ -13,9 +13,8 @@ namespace TeaLeaves
         private MathProblem _currentProblem = null!;
         private int _score = 0;
         private Node2D _numbersContainer = null!;
-        private AudioStreamPlayer _correctSound = null!;
-        private AudioStreamPlayer _wrongSound = null!;
-        private AudioStreamPlayer _celebrateSound = null!;
+        private AudioStreamPlayer _popSound = null!;
+        private AudioStreamPlayer _bokbokSound = null!;
         private Player _player = null!;
         private Camera2D _camera = null!;
 
@@ -44,17 +43,13 @@ namespace TeaLeaves
             _camera.Position = Vector2.Zero;
 
             // Load sounds
-            _correctSound = new AudioStreamPlayer();
-            _correctSound.Stream = GD.Load<AudioStream>("res://assets/sounds/correct.wav");
-            AddChild(_correctSound);
+            _popSound = new AudioStreamPlayer();
+            _popSound.Stream = GD.Load<AudioStream>("res://assets/sounds/pop.mp3");
+            AddChild(_popSound);
 
-            _wrongSound = new AudioStreamPlayer();
-            _wrongSound.Stream = GD.Load<AudioStream>("res://assets/sounds/wrong.wav");
-            AddChild(_wrongSound);
-
-            _celebrateSound = new AudioStreamPlayer();
-            _celebrateSound.Stream = GD.Load<AudioStream>("res://assets/sounds/celebrate.wav");
-            AddChild(_celebrateSound);
+            _bokbokSound = new AudioStreamPlayer();
+            _bokbokSound.Stream = GD.Load<AudioStream>("res://assets/sounds/bokbok.mp3");
+            AddChild(_bokbokSound);
 
             // Load the NumberPickup scene if not set via export
             NumberPickupScene ??= GD.Load<PackedScene>("res://actors/NumberPickup.tscn");
@@ -141,22 +136,33 @@ namespace TeaLeaves
             }
         }
 
-        private void OnNumberTouched(int value)
+        private void OnNumberTouched(int value, Node2D pickup)
         {
             if (value == _currentProblem.Answer)
             {
                 _score += 10;
-                _correctSound.Play();
-                _celebrateSound.Play();
+                _bokbokSound.Play();
                 EventBus.Instance!.EmitCorrectAnswer(_score);
 
-                ClearNumbers();
-                GetTree().CreateTimer(1.5).Timeout += StartNewProblem;
+                // Play confetti on the correct pickup
+                if (pickup is NumberPickup correctPickup)
+                    correctPickup.PlayConfettiExplosion();
+
+                // Clear remaining numbers and start next problem after confetti plays
+                GetTree().CreateTimer(1.5).Timeout += () =>
+                {
+                    ClearNumbers();
+                    StartNewProblem();
+                };
             }
             else
             {
-                _wrongSound.Play();
+                _popSound.Play();
                 EventBus.Instance!.EmitWrongAnswer();
+
+                // Pop the wrong pickup
+                if (pickup is NumberPickup wrongPickup)
+                    wrongPickup.PlayPop();
             }
         }
 
