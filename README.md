@@ -6,6 +6,17 @@ You provide a game description, Claude Code interprets it and generates C# gamep
 
 Forked from [tea-leaves](https://github.com/cleak/tea-leaves), the engineering substrate behind [Quasar Saz](https://github.com/cleak/quasar-saz) (a game designed by a dog and built by Claude Code).
 
+## Table of Contents
+
+- [Play a Game (No Setup Required)](#play-a-game-no-setup-required)
+- [One-Time Setup](#one-time-setup)
+- [Making a Game](#making-a-game)
+- [Technical Details](#technical-details)
+- [Distributing Your Game](#distributing-your-game)
+- [What AI Can Do vs. What Humans Must Do](#what-ai-can-do-vs-what-humans-must-do)
+- [Making Multiple Games](#making-multiple-games)
+- [Upstream / Related Projects](#upstream--related-projects)
+
 ---
 
 ## Play a Game (No Setup Required)
