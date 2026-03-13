@@ -8,6 +8,20 @@ Forked from [tea-leaves](https://github.com/cleak/tea-leaves), the engineering s
 
 ---
 
+## Play a Game (No Setup Required)
+
+Want to try a game without installing anything? Download a pre-built `.dmg` from the [Releases](https://github.com/justinpearson/ai-godot-video-game-maker/releases) page.
+
+| Game | Description | Download |
+|---|---|---|
+| **Math Adventure** | Children's math addition game — drive a character to collect correct answers | [v1.0 DMG](https://github.com/justinpearson/ai-godot-video-game-maker/releases/tag/v1.0-math-adventure) |
+
+**To play:** Download the DMG, open it, drag the app out, then right-click > Open > Open (needed once for unsigned apps). macOS 10.12+, Apple Silicon or Intel.
+
+Want to build your own game or modify an existing one? Keep reading.
+
+---
+
 ## One-Time Setup
 
 Complete these steps once on a fresh clone. Every step must succeed before moving on.
