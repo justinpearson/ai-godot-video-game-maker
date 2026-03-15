@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/LinkageCanvas.cs" id="1"]
+[ext_resource type="Script" path="res://ui/LinkageHUD.cs" id="2"]
+
+[node name="LinkageWorld" type="Node2D"]
+
+[node name="LinkageCanvas" type="Node2D" parent="."]
+script = ExtResource("1")
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(960, 540)
+
+[node name="HUD" type="CanvasLayer" parent="."]
+script = ExtResource("2")
+CanvasPath = NodePath("../LinkageCanvas")
