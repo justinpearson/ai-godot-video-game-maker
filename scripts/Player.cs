@@ -82,7 +82,7 @@ namespace TeaLeaves
                 _bobAmount = Mathf.Sin(_bobTimer) * 3f;
 
                 // Flip sprite based on horizontal movement
-                _sprite.FlipH = input.X < 0;
+                _sprite.FlipH = input.X > 0;
             }
             else
             {
@@ -135,9 +135,9 @@ namespace TeaLeaves
         {
             var rng = new RandomNumberGenerator();
 
-            // Horn tip is roughly at top-right of the sprite when facing right
-            // The unicorn faces right by default, horn is at upper area
-            float hornX = _sprite.FlipH ? -12f : 12f;
+            // Horn tip is at top-left of the sprite (unicorn faces left by default)
+            // FlipH is true when moving right, so horn flips to the right side
+            float hornX = _sprite.FlipH ? 12f : -12f;
             float hornY = -28f + _bobAmount;
 
             var sparkle = new Sparkle
